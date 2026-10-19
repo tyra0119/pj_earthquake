@@ -300,7 +300,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
         <label><input type="checkbox" id="tgCities" checked>地名</label>
         <label><input type="checkbox" id="tgDepth" checked>深さの目盛</label>
         <label><input type="checkbox" id="tgSlab" checked>沈み込むプレート</label>
-        <label><input type="checkbox" id="tgFaults" checked>活断層</label>
+        <label><input type="checkbox" id="tgFaults">活断層</label>
       </div>
       <div class="fkey" aria-label="活断層の色"><span><i style="background:#ff5fa8"></i>逆断層</span><span><i style="background:#3fe0d0"></i>正断層</span><span><i style="background:#f3eedc"></i>横ずれ断層</span><span><i style="background:#ff9d6b"></i>プレート境界</span></div>
       <div class="grp">
@@ -764,6 +764,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   var SG = (D.slab.grids || []).map(function (g) { return { lon0: g.lon0, lat0: g.lat0, nx: g.nx, ny: g.ny, step: g.step, z: b64(g.z, Uint16Array) }; });
   var faultG = { japan: new THREE.Group(), world: new THREE.Group() }, slabG = { japan: new THREE.Group(), world: new THREE.Group() };
   japan.add(faultG.japan); japan.add(slabG.japan); world.add(faultG.world); world.add(slabG.world);
+  faultG.japan.visible = faultG.world.visible = false; // 活断層は初め出さない（2026-10-19 利用者「活断層の初期値はOFF」）
   function clearGroup(g) { while (g.children.length) { var o = g.children.pop(); o.geometry.dispose(); } }
   // 地表の点と地下の点。日本は y をそのまま km（群れ全体を縦に vex 倍）、世界は地球の中心からの位置
   function surfPt(mode, lon, lat) {
@@ -1461,6 +1462,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   document.getElementById('tgDepth').addEventListener('change', function () { var on = this.checked; frame.visible = on; wGrid.visible = on; labels.forEach(function (l) { if (l.kind === 'depth') l.on = on; }); });
   document.getElementById('tgSlab').addEventListener('change', function () { slabG.japan.visible = slabG.world.visible = this.checked; });
   document.getElementById('tgFaults').addEventListener('change', function () { faultG.japan.visible = faultG.world.visible = this.checked; });
+  faultG.japan.visible = faultG.world.visible = document.getElementById('tgFaults').checked; // ブラウザが前のチェックを戻したときも、見た目と合わせる
 
   // 再生
   var scrub = document.getElementById('scrub'), playBtn = document.getElementById('playBtn'), clock = document.getElementById('clock'), playDate = document.getElementById('playDate');
