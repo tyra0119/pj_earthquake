@@ -4,4 +4,4 @@
 
 公開ページ: https://tyra0119.github.io/pj_earthquake/
 
-データ: 米国地質調査所（USGS）地震カタログ、Terrain Tiles（Mapzen / AWS）、Bird (2003) PB2002 プレート境界、USGS Slab2（Hayes 2018）、GEM Global Active Faults Database（Styron & Pagani 2020、CC BY-SA 4.0。index.html に埋め込んだ活断層のデータも CC BY-SA 4.0）
+データ: 気象庁「震源データ」（https://www.data.jma.go.jp/eqev/data/bulletin/hypo.html）を加工して作成（日本の 1919〜2024 年、M2 以上）、米国地質調査所（USGS）地震カタログ、Terrain Tiles（Mapzen / AWS）、Bird (2003) PB2002 プレート境界、USGS Slab2（Hayes 2018）、GEM Global Active Faults Database（Styron & Pagani 2020、CC BY-SA 4.0。index.html に埋め込んだ活断層のデータも CC BY-SA 4.0）
