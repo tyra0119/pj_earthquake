@@ -118,7 +118,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .info dd { margin: 0; min-width: 0; }
 
 /* 再生中の日付 */
-.clock { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 22px; letter-spacing: .04em; color: var(--fg); text-shadow: 0 0 8px #000; pointer-events: none; }
+.clock { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 22px; color: var(--fg); text-shadow: 0 0 8px #000; pointer-events: none; white-space: nowrap; }
+/* 再生中の日付は、数字の枠の幅を決めて（年 4 桁・月日 2 桁）、桁数が変わっても文字が動かないように */
+.dn { display: inline-block; text-align: right; font-family: var(--f-data); font-variant-numeric: tabular-nums; }
+.dn.y { width: 4ch; } .dn.md { width: 2ch; }
 
 /* 凡例 */
 .legend {
@@ -1115,7 +1118,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   // 再生
   var scrub = document.getElementById('scrub'), playBtn = document.getElementById('playBtn'), clock = document.getElementById('clock'), playDate = document.getElementById('playDate');
   var lastFrame = 0;
-  function showClock(on) { clock.hidden = !on; if (on) { clock.textContent = dateText(state.T, false); playDate.textContent = dateText(state.T, false); } else playDate.textContent = ''; }
+  // 日付を「年・月・日」の数字の枠に入れて出す（枠は 1 度だけ作り、数字だけ書きかえる）
+  function setDate(el, t) {
+    if (!el._dn) {
+      el.textContent = ''; el._dn = [];
+      [['y', '年'], ['md', '月'], ['md', '日']].forEach(function (p) {
+        var s = document.createElement('span'); s.className = 'dn ' + p[0]; el.appendChild(s); el.appendChild(document.createTextNode(p[1])); el._dn.push(s);
+      });
+    }
+    var d = new Date(t + 9 * 3600e3), v = [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()];
+    for (var k = 0; k < 3; k++) if (el._dn[k].textContent !== String(v[k])) el._dn[k].textContent = v[k];
+  }
+  function showClock(on) {
+    clock.hidden = !on;
+    if (on) { setDate(clock, state.T); setDate(playDate, state.T); } else { playDate.textContent = ''; playDate._dn = null; }
+  }
   function stopPlay() { state.playing = false; playBtn.textContent = '▶ 再生'; }
   playBtn.addEventListener('click', function () {
     if (state.playing) { stopPlay(); refresh(); return; }
@@ -1134,7 +1151,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     var t0 = periodStart(), span = ASOF_END - t0;
     state.T = Math.min(ASOF_END, state.T + span * dt / 24000); // 全期間を 24 秒で
     scrub.value = Math.round((state.T - t0) / span * 1000);
-    clock.textContent = dateText(state.T, false); playDate.textContent = clock.textContent;
+    setDate(clock, state.T); setDate(playDate, state.T);
     updateQuakes(); updateStats();
     if (state.T >= ASOF_END) { stopPlay(); updateList(); setTimeout(function () { if (!state.playing && state.T >= ASOF_END) showClock(false); }, 1500); }
   }
