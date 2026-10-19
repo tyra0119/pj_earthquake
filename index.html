@@ -55,6 +55,31 @@ body {
 .strip .sstat b { color: var(--fg); font-weight: 700; }
 .strip canvas { flex: 1; min-height: 0; width: 100%; display: block; }
 #app.strip-open .legend { display: none; }
+/* 場所から見る */
+.pview { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(170px, 230px) 1fr; gap: 12px; margin-top: 8px; }
+.porig { overflow-y: auto; display: flex; flex-direction: column; gap: 3px; min-height: 0; padding-right: 2px; }
+.porig button { font: inherit; font-size: 12px; text-align: left; padding: 4px 8px; border-radius: 6px; border: 1px solid transparent; background: rgba(255,255,255,.04); color: var(--fg); cursor: pointer; }
+.porig button:hover { border-color: var(--line); }
+.porig button[aria-pressed="true"] { background: var(--accent); color: #1b1408; font-weight: 700; }
+.pmain { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.psum { margin: 0 0 6px; font-size: 12px; line-height: 1.55; color: var(--muted); }
+.psum b { color: var(--fg); }
+.pres { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; }
+.pres li { display: grid; grid-template-columns: minmax(90px, 190px) 1fr 76px auto; gap: 8px; align-items: center; padding: 4px 2px; border-top: 1px solid var(--line); font-size: 12px; cursor: pointer; }
+.pres li:hover { background: rgba(255,255,255,.04); }
+.pres li.none { display: block; color: var(--muted); cursor: default; }
+.pres .rn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pres .rb { position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,.06); }
+.pres .rb .act { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--accent); }
+.pres .rb .exp { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #fff; border-radius: 1px; }
+.pres .rv { font-family: var(--f-data); text-align: right; white-space: nowrap; }
+.pres .rv small { display: block; color: var(--muted); font-size: 10.5px; }
+.pres .badge { font-size: 10.5px; padding: 1px 6px; border-radius: 9px; white-space: nowrap; }
+.pres .badge.hi { background: #ffe2a8; color: #2b1d05; }
+.pres .badge.lo { background: rgba(140, 180, 225, .25); color: var(--fg); }
+.plb { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 12px; font-weight: 700; color: #ffd27a; text-shadow: 0 0 3px #000, 0 0 6px #000; pointer-events: none; }
+.plb.origin { color: #fff; font-size: 13px; }
+.plb.hi { color: #fff3d6; }
 @media (min-width: 681px) { .strip { left: calc(var(--gutter-l) + 312px); } }
 .selrect { position: absolute; left: 0; top: 0; border: 1.5px dashed var(--accent); background: rgba(255, 181, 71, .08); border-radius: 2px; pointer-events: none; box-sizing: border-box; }
 #gl:active { cursor: grabbing; }
@@ -210,6 +235,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .strip { height: 50vh; padding: 8px 10px 6px; }
   .strip .shead { gap: 6px; }
   .strip .sstat { font-size: 11px; margin: 4px 0 2px; }
+  .pview { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 6px; }
+  .porig { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+  .porig button { white-space: nowrap; flex: none; }
+  .pres li { grid-template-columns: minmax(70px, 120px) 1fr 62px; }
+  .pres .badge { grid-column: 1 / -1; justify-self: start; }
   #app.strip-open .info { bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + 50vh + 8px); max-height: 22vh; overflow-y: auto; }
   .legend .bar { width: 130px; }
   .legend .sizes { display: none; }
@@ -282,8 +312,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       </div>
       <div class="grp">
         <div class="ttl">環太平洋のつながり</div>
-        <div class="tourrow"><button id="stripBtn">時空図を開く</button></div>
-        <p class="help">環太平洋の地震帯を一本の線に伸ばして、大きな地震を年ごとに並べます。決めた日数のうちに遠く（1,000 km より先）で起きた次の大地震を線で結び、その数を偶然（日付をでたらめにしたとき）と比べます。地球儀にもつながりを弧で描きます。</p>
+        <div class="tourrow"><button id="stripBtn">つながりを見る</button></div>
+        <p class="help">環太平洋を 15 の場所に分け、選んだ場所で大地震が起きたあと、決めた日数のうちに大地震が起きた場所と回数を、偶然（日付をでたらめにしたとき）と比べて出します。地球儀には矢印で描きます。「時空図」のタブでは、地震帯を一本の線に伸ばして年ごとに並べた図も見られます。</p>
       </div>
       <div class="grp">
         <div class="ttl">起きた順にたどる</div>
@@ -359,9 +389,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   <div class="tip" id="tip" hidden></div>
   <div class="selrect" id="selRect" hidden></div>
 
-  <section class="strip" id="strip" hidden aria-label="環太平洋の時空図">
+  <section class="strip" id="strip" hidden aria-label="環太平洋のつながり">
     <div class="shead">
-      <h2>環太平洋の時空図</h2>
+      <h2>環太平洋のつながり</h2>
+      <div class="seg" id="stripTab" aria-label="見方">
+        <button data-t="place" aria-pressed="true">場所から見る</button><button data-t="time" aria-pressed="false">時空図</button>
+      </div>
       <div class="seg" id="stripM" aria-label="大きさ">
         <button data-v="6.5" aria-pressed="false">M6.5</button><button data-v="7" aria-pressed="false">M7</button><button data-v="7.5" aria-pressed="false">M7.5</button><button data-v="8" aria-pressed="true">M8</button><button data-v="8.5" aria-pressed="false">M8.5</button><button data-v="9" aria-pressed="false">M9</button>
       </div>
@@ -373,8 +406,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       </div>
     </div>
     <button class="close" id="stripClose" aria-label="閉じる">×</button>
-    <p class="sstat" id="stripStat"></p>
-    <canvas id="stripCanvas" aria-label="横が環太平洋の地震帯の上の位置、縦が年の図"></canvas>
+    <div class="pview" id="pView">
+      <div class="porig" id="pOrig" aria-label="場所を選ぶ"></div>
+      <div class="pmain"><p class="psum" id="pSum"></p><ol class="pres" id="pRes"></ol></div>
+    </div>
+    <p class="sstat" id="stripStat" hidden></p>
+    <canvas id="stripCanvas" hidden aria-label="横が環太平洋の地震帯の上の位置、縦が年の図"></canvas>
   </section>
   <div class="toast" id="toast" hidden></div>
 </div>
@@ -920,7 +957,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   var selLineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 });
   function select(q, fly) {
     state.sel = q;
-    if (typeof strip !== 'undefined' && strip && strip.open) { strip.sel = q && q.ring && q.mag >= strip.minM - 1e-9 ? q : null; drawStrip(); buildRingArcs(); }
+    if (typeof strip !== 'undefined' && strip && strip.open) {
+      if (strip.tab === 'place') { if (q) { ringPlace(); if (q.ring && q.ring.p !== place.origin) setOrigin(q.ring.p, false); } }
+      else { strip.sel = q && q.ring && q.mag >= strip.minM - 1e-9 ? q : null; drawStrip(); buildRingArcs(); }
+    }
     if (tour) tourCard.hidden = !!q; // 起きた順の一覧を出しているときは、地震の説明と入れ替える
     drawSel();
     if (!q) { info.hidden = true; pulse.hidden = true; return; }
@@ -1795,11 +1835,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       sph(q.lon, q.lat, 1, u);
       var best = -2, bx = 0;
       for (var i = 0; i < ringDense.length; i++) { var d = ringDense[i].v.dot(u); if (d > best) { best = d; bx = ringDense[i].x; } }
-      if (best >= cosNear) q.ring = { x: bx, u: u.clone() };
+      if (best >= cosNear) q.ring = { x: bx, u: u.clone(), p: placeOf(u) };
     });
   }
 
-  var strip = { open: false, minM: 8, days: 365, since: 1900, events: [], links: [], sel: null, stat: null, pts: [] };
+  var strip = { open: false, tab: 'place', minM: 8, days: 365, since: 1900, events: [], links: [], sel: null, stat: null, pts: [] };
   var stripEl = document.getElementById('strip'), stripCv = document.getElementById('stripCanvas'), stripStat = document.getElementById('stripStat');
   // 時空図の始まり（1900 年か 1995 年。1994 年までは M7 以上だけ）
   function stripT0() { return Date.UTC(strip.since, 0, 1) - 9 * 3600e3; }
@@ -1937,7 +1977,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   var ringArcs = null;
   function buildRingArcs() {
     if (ringArcs) { world.remove(ringArcs); ringArcs.geometry.dispose(); ringArcs = null; }
-    if (!strip.open || !strip.links.length) return;
+    if (!strip.open || strip.tab !== 'time' || !strip.links.length) return;
     var pos = [], col = [], sel = strip.sel, cA = new THREE.Color(0xffb547), cB = new THREE.Color(0x7a4a1c), cW = new THREE.Color(0xffffff), tmp = new THREE.Color();
     strip.links.forEach(function (L) {
       var on = sel && (L.a === sel || L.b === sel);
@@ -1960,18 +2000,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     world.add(ringArcs);
   }
 
-  function stripRefresh() { stripCompute(); stripStatText(); drawStrip(); buildRingArcs(); }
+  function stripRefresh() { if (strip.tab !== 'time') return; stripCompute(); stripStatText(); drawStrip(); buildRingArcs(); }
   function openStrip(on) {
     strip.open = on; stripEl.hidden = !on;
     document.getElementById('app').classList.toggle('strip-open', on);
-    document.getElementById('stripBtn').textContent = on ? '時空図を閉じる' : '時空図を開く';
-    if (!on) { strip.sel = null; buildRingArcs(); return; }
+    document.getElementById('stripBtn').textContent = on ? 'つながりを閉じる' : 'つながりを見る';
+    if (!on) { strip.sel = null; buildRingArcs(); buildPlaceArrows(); return; }
     // 地球儀で、時空図と同じ年からの大きな地震を出す
     if (state.mode !== 'world') setMode('world');
     syncPeriod();
     setMinMag(strip.minM); clearTour(); refresh();
-    stripStat.textContent = '数えています…';
-    setTimeout(stripRefresh, 30);
+    setTab(strip.tab, true);
   }
   document.getElementById('stripBtn').addEventListener('click', function () { openStrip(!strip.open); });
   document.getElementById('stripClose').addEventListener('click', function () { openStrip(false); });
@@ -1981,7 +2020,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       strip[key] = +b.dataset.v;
       Array.prototype.forEach.call(this.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); });
       if (after) after();
-      strip.sel = null; stripStat.textContent = '数えています…'; setTimeout(stripRefresh, 30);
+      strip.sel = null;
+      if (strip.tab === 'place') setOrigin(place.origin, false); else { stripStat.textContent = '数えています…'; setTimeout(stripRefresh, 30); }
     });
   }
   chipGroup('stripM', 'minM', function () { setMinMag(strip.minM); refresh(); });
@@ -1989,6 +2029,168 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   function syncPeriod() { var pv = strip.since === 1900 ? '1900' : 'all'; if (state.period !== pv) document.querySelector('#period [data-p="' + pv + '"]').click(); }
   chipGroup('stripS', 'since', function () { syncPeriod(); setMinMag(strip.minM); refresh(); });
   addEventListener('resize', function () { drawStrip(); });
+  // ---- 場所から見る ----
+  // 2026-10-19 利用者「時空図は使い方が難しいな 距離より、場所でどうなのかを見てみたいかなあ」。
+  // 環太平洋を 15 の場所に分け、選んだ場所で大地震が起きたあと、決めた日数のうちに大地震が起きた場所と回数を出す（地球儀には矢印）。
+  // それぞれの場所の回数を、日付だけをでたらめにした 300 回と比べる
+  var PLACES = [
+    { k: 'nz', name: 'ニュージーランド・ケルマデック', a: [[-46, 166.5], [-41.5, 174.5], [-37.5, 178.8], [-32, -178], [-29, -177.3]] },
+    { k: 'tonga', name: 'トンガ・フィジー', a: [[-24, -175.8], [-19.5, -173.5], [-15.5, -173.3], [-18, -178.5], [-21, 178]] },
+    { k: 'vanuatu', name: 'バヌアツ・ソロモン', a: [[-20.5, 169.5], [-15, 167], [-11, 165.5], [-10, 161], [-7, 155.5]] },
+    { k: 'png', name: 'ニューギニア', a: [[-5.5, 152], [-6, 148], [-4, 143], [-2, 136], [-3.5, 138]] },
+    { k: 'indo', name: 'インドネシア東部', a: [[1.5, 126.5], [-1, 123], [-4, 128], [-7, 129.5]] },
+    { k: 'sunda', name: 'スマトラ・ジャワ', a: [[-10, 118], [-9.5, 111], [-7, 104], [-2, 100], [3, 96], [7, 94], [13, 93]] },
+    { k: 'phil', name: 'フィリピン・台湾', a: [[6, 126.5], [10, 126.2], [14, 124], [14, 120], [19, 121], [23.5, 121.8]] },
+    { k: 'japan', name: '日本', a: [[26, 127], [29.5, 131], [32.5, 133], [33.5, 136.5], [35, 140], [37, 142.5], [40, 143.5], [42, 145], [36, 138], [38.5, 139]] },
+    { k: 'izu', name: '伊豆・小笠原・マリアナ', a: [[31, 142], [28, 142.5], [26, 143], [20, 146.5], [14, 147], [11, 143], [18, 145.5]] },
+    { k: 'kuril', name: '千島・カムチャツカ', a: [[44, 149.5], [46, 152], [48, 155], [52, 159.5], [55, 163], [45, 147]] },
+    { k: 'aleut', name: 'アリューシャン・アラスカ', a: [[52, 172], [51.5, 180], [51.5, -175], [53, -165], [55, -158], [57.5, -152], [60, -147], [61, -150]] },
+    { k: 'nam', name: '北米西岸', a: [[59, -139], [55, -134], [49, -128], [42, -125], [37, -122], [32, -116], [24, -109]] },
+    { k: 'mex', name: 'メキシコ・中米', a: [[18.5, -104], [16, -98], [14, -92], [12, -87.5], [9.5, -84], [7, -80]] },
+    { k: 'andes', name: 'コロンビア・エクアドル・ペルー', a: [[3, -78.5], [0, -80], [-5, -81], [-10, -78.5], [-15, -75.5], [-8, -75], [-3, -77]] },
+    { k: 'chile', name: 'チリ・アルゼンチン', a: [[-18.5, -71], [-23, -70.5], [-28, -71], [-33, -72], [-38, -74], [-44, -75.5], [-22, -66], [-27, -63]] }
+  ];
+  var NP = PLACES.length, placeAnchors = [];
+  PLACES.forEach(function (P, i) {
+    var c = new V3();
+    P.a.forEach(function (p) { var v = sph(p[1], p[0], 1); c.add(v); placeAnchors.push({ v: v, i: i }); });
+    P.c = c.normalize(); // 矢印と札を置く所
+  });
+  function placeOf(u) { var best = -2, bi = -1; placeAnchors.forEach(function (A) { var d = A.v.dot(u); if (d > best) { best = d; bi = A.i; } }); return bi; }
+
+  var place = { origin: 7, res: null }; // 初めは日本
+  var pView = document.getElementById('pView'), pOrig = document.getElementById('pOrig'), pSum = document.getElementById('pSum'), pRes = document.getElementById('pRes');
+  PLACES.forEach(function (P, i) {
+    var b = document.createElement('button'); b.textContent = P.name; b.dataset.i = i; b.setAttribute('aria-pressed', String(i === place.origin));
+    b.addEventListener('click', function () { setOrigin(i, true); });
+    pOrig.appendChild(b);
+  });
+  function setOrigin(i, fly) {
+    place.origin = i;
+    Array.prototype.forEach.call(pOrig.children, function (b) { b.setAttribute('aria-pressed', String(+b.dataset.i === i)); });
+    var cur = pOrig.children[i]; if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    pSum.textContent = '数えています…';
+    setTimeout(function () { placeCompute(); placeRender(); if (fly) placeFly(); }, 20);
+  }
+  // 数える: 選んだ場所の大地震のあと、決めた日数のうちに大地震が起きた場所（1 回の地震につき、場所ごとに 1 回まで）
+  function placeCount(ev, reg, times, A, T) {
+    var n = ev.length, ord = new Array(n), counts = new Int32Array(NP), nA = 0;
+    for (var i = 0; i < n; i++) ord[i] = i;
+    ord.sort(function (a, b) { return times[a] - times[b]; });
+    for (i = 0; i < n; i++) {
+      var a = ord[i]; if (reg[a] !== A) continue;
+      nA++;
+      var mask = 0;
+      for (var j = i + 1; j < n; j++) { var b = ord[j]; if (times[b] - times[a] > T) break; mask |= 1 << reg[b]; }
+      for (var k = 0; k < NP; k++) if (mask & (1 << k)) counts[k]++;
+    }
+    return { counts: counts, nA: nA };
+  }
+  function placeCompute() {
+    ringPlace();
+    var t0s = stripT0(), ev = Q.filter(function (q) { return q.ring && q.mag >= strip.minM - 1e-9 && q.t >= t0s; });
+    var reg = new Int32Array(ev.length), times = new Float64Array(ev.length), T = strip.days * 86400e3, A = place.origin;
+    ev.forEach(function (q, i) { reg[i] = q.ring.p; times[i] = q.t; });
+    var real = placeCount(ev, reg, times, A, T);
+    var SIMS = 300, sum = new Float64Array(NP), ge = new Int32Array(NP), le = new Int32Array(NP), span = ASOF_END - t0s, seed = 777;
+    function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+    var rt = new Float64Array(ev.length);
+    for (var s = 0; s < SIMS; s++) {
+      for (var i = 0; i < ev.length; i++) rt[i] = t0s + rnd() * span;
+      var c = placeCount(ev, reg, rt, A, T).counts;
+      for (var k = 0; k < NP; k++) { sum[k] += c[k]; if (c[k] >= real.counts[k]) ge[k]++; if (c[k] <= real.counts[k]) le[k]++; }
+    }
+    place.res = { nA: real.nA, counts: real.counts, mean: Array.prototype.map.call(sum, function (x) { return x / SIMS; }), pHi: Array.prototype.map.call(ge, function (x) { return x / SIMS; }), pLo: Array.prototype.map.call(le, function (x) { return x / SIMS; }), ev: ev, reg: reg };
+  }
+  function windowText() { return strip.days >= 3650 ? '10年' : strip.days >= 365 ? '1年' : strip.days + '日'; }
+  function placeRender() {
+    var r = place.res; if (!r) return;
+    var A = place.origin, P = PLACES[A], m = 'M' + strip.minM, since = strip.since === 1900 ? '1900年から' : '1995年から';
+    pSum.textContent = '';
+    if (!r.nA) { pSum.textContent = since + '、' + P.name + 'では ' + m + ' 以上の地震が起きていません。大きさを下げるか、ほかの場所を選んでください。'; pRes.textContent = ''; buildPlaceArrows(); return; }
+    var b = document.createElement('b'); b.textContent = P.name + 'で ' + m + ' 以上が ' + r.nA + ' 回';
+    pSum.appendChild(document.createTextNode(since + '、'));
+    pSum.appendChild(b);
+    pSum.appendChild(document.createTextNode('。そのあと ' + windowText() + '以内に ' + m + ' 以上が起きた場所と、' + r.nA + ' 回のうち何回あったか。白い縦線は、日付をでたらめにした 300 回の平均（偶然ならこのくらい）。'));
+    var rows = [];
+    for (var k = 0; k < NP; k++) if (r.counts[k] > 0 || r.mean[k] >= 0.5) rows.push(k);
+    rows.sort(function (a, b) { return r.counts[b] - r.counts[a] || r.mean[b] - r.mean[a]; });
+    var max = 1; rows.forEach(function (k) { max = Math.max(max, r.counts[k], r.mean[k]); });
+    pRes.textContent = '';
+    rows.forEach(function (k) {
+      var li = document.createElement('li');
+      var nm = document.createElement('span'); nm.className = 'rn'; nm.textContent = (k === A ? '同じ場所（' + PLACES[k].name + '）' : PLACES[k].name);
+      var bar = document.createElement('span'); bar.className = 'rb';
+      var act = document.createElement('i'); act.className = 'act'; act.style.width = (r.counts[k] / max * 100) + '%';
+      var exp = document.createElement('i'); exp.className = 'exp'; exp.style.left = (r.mean[k] / max * 100) + '%';
+      bar.appendChild(act); bar.appendChild(exp);
+      var v = document.createElement('span'); v.className = 'rv'; v.textContent = r.counts[k] + ' 回';
+      var sm = document.createElement('small'); sm.textContent = '偶然 ' + r.mean[k].toFixed(1); v.appendChild(sm);
+      li.appendChild(nm); li.appendChild(bar); li.appendChild(v);
+      if (r.pHi[k] < 0.05 && r.counts[k] > r.mean[k]) { var bd = document.createElement('b'); bd.className = 'badge hi'; bd.textContent = '偶然より多い'; li.appendChild(bd); }
+      else if (r.pLo[k] < 0.05 && r.counts[k] < r.mean[k]) { var bd2 = document.createElement('b'); bd2.className = 'badge lo'; bd2.textContent = '偶然より少ない'; li.appendChild(bd2); }
+      li.addEventListener('click', function () { if (k !== A) setOrigin(k, true); });
+      li.title = k !== A ? '押すと、' + PLACES[k].name + 'から見ます' : '';
+      pRes.appendChild(li);
+    });
+    if (!rows.length) { var li0 = document.createElement('li'); li0.className = 'none'; li0.textContent = windowText() + '以内に ' + m + ' 以上が起きた場所はありません。'; pRes.appendChild(li0); }
+    buildPlaceArrows();
+  }
+  // 地球儀の矢印（選んだ場所 → 次に大地震が起きた場所。太さは回数、偶然より多い所は明るく）と札
+  var placeArrows = new THREE.Group(); world.add(placeArrows);
+  var placeLabels = [];
+  function buildPlaceArrows() {
+    while (placeArrows.children.length) { var o = placeArrows.children.pop(); o.geometry.dispose(); o.material.dispose(); }
+    placeLabels.forEach(function (L) { labelsEl.removeChild(L.el); }); placeLabels = [];
+    var r = place.res; if (!strip.open || strip.tab !== 'place' || !r) return;
+    var A = place.origin, a = PLACES[A].c;
+    function lab(i, text, cls) { var el = document.createElement('div'); el.className = 'plb ' + cls; el.textContent = text; labelsEl.appendChild(el); placeLabels.push({ el: el, v: PLACES[i].c.clone().multiplyScalar(R + 30) }); }
+    lab(A, PLACES[A].name + '（' + r.nA + ' 回）', 'origin');
+    for (var k = 0; k < NP; k++) {
+      if (k === A || !r.counts[k]) continue;
+      var b = PLACES[k].c, ang = a.angleTo(b), n = Math.max(12, Math.ceil(ang / (2 * DEG))), lift = Math.min(2200, ang * R * 0.15), pos = [], col = [];
+      var hi = r.pHi[k] < 0.05 && r.counts[k] > r.mean[k], cA = new THREE.Color(hi ? 0xffe2a8 : 0xffb547), cB = new THREE.Color(0x5a3412), tmp = new THREE.Color();
+      for (var s = 0; s <= n; s++) {
+        var t = s / n, v = a.clone().multiplyScalar(Math.sin((1 - t) * ang)).add(b.clone().multiplyScalar(Math.sin(t * ang))).divideScalar(Math.sin(ang) || 1).normalize();
+        v.multiplyScalar(R + 10 + lift * Math.sin(Math.PI * t));
+        tmp.copy(cB).lerp(cA, 0.25 + 0.75 * t); // 選んだ場所の側が暗く、行き先の側が明るい
+        pos.push(v.x, v.y, v.z); col.push(tmp.r, tmp.g, tmp.b);
+      }
+      var g = new THREE.LineGeometry(); g.setPositions(pos); g.setColors(col);
+      var mat = new THREE.LineMaterial({ vertexColors: true, linewidth: Math.min(9, 1.5 + r.counts[k] * 1.3), transparent: true, opacity: 0.95 });
+      mat.resolution.set(canvas.clientWidth, canvas.clientHeight);
+      var line = new THREE.Line2(g, mat); line.renderOrder = 6; line.frustumCulled = false;
+      placeArrows.add(line);
+      lab(k, PLACES[k].name + ' ' + r.counts[k] + ' 回', hi ? 'hi' : '');
+    }
+  }
+  function updatePlaceLabels() {
+    if (!placeLabels.length) return;
+    var w = canvas.clientWidth, h = canvas.clientHeight, cam = camera.position;
+    placeLabels.forEach(function (L) {
+      var show = state.mode === 'world' && L.v.dot(cam.clone().sub(L.v)) > 0, s = show && project(L.v, w, h);
+      if (!s) { L.el.style.display = 'none'; return; }
+      L.el.style.display = ''; L.el.style.transform = 'translate(' + Math.round(s[0] - L.el.offsetWidth / 2) + 'px,' + Math.round(s[1] - 12) + 'px)';
+    });
+  }
+  // 選んだ場所と行き先が入るように地球儀を向ける
+  function placeFly() {
+    var r = place.res; if (!r) return;
+    var pts = [PLACES[place.origin].c]; for (var k = 0; k < NP; k++) if (r.counts[k]) pts.push(PLACES[k].c);
+    var m = new V3(); pts.forEach(function (v) { m.add(v); }); m.normalize();
+    var ang = 0; pts.forEach(function (v) { ang = Math.max(ang, m.angleTo(v)); });
+    var half = Math.min(camera.fov / 2 * DEG, Math.atan(Math.tan(camera.fov / 2 * DEG) * camera.aspect));
+    var dist = ang > 1.2 ? wHomeDist() : clamp((R * Math.sin(ang) + 800) / Math.tan(half) * 1.15 + R * (1 - Math.cos(ang)), 6000, 40000);
+    wFly({ lat: Math.asin(clamp(m.y, -1, 1)) / DEG, lon: Math.atan2(-m.z, m.x) / DEG, dist: dist, head: 0, tilt: 0, ms: 1200 });
+  }
+  function setTab(t, fly) {
+    strip.tab = t;
+    Array.prototype.forEach.call(document.getElementById('stripTab').children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.t === t)); });
+    pView.hidden = t !== 'place'; stripCv.hidden = t !== 'time'; stripStat.hidden = t !== 'time';
+    if (t === 'place') { buildRingArcs(); setOrigin(place.origin, !!fly); } else { buildPlaceArrows(); stripStat.textContent = '数えています…'; setTimeout(stripRefresh, 30); }
+  }
+  document.getElementById('stripTab').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) setTab(b.dataset.t); });
+
 
   // スマホでは、下に出した説明・一覧のカードに隠れないよう、地図の中ほどをカードの上の空いた所へずらす
   var viewOff = 0;
@@ -2029,7 +2231,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     if (Math.abs(camera.near - nr) > nr * 0.05 || Math.abs(camera.far - fr) > fr * 0.05) { camera.near = nr; camera.far = fr; camera.updateProjectionMatrix(); }
     fitViewToCards();
     renderer.render(scene, camera);
-    updateOverlay(); updateTourBadges();
+    updateOverlay(); updateTourBadges(); updatePlaceLabels();
   }
   requestAnimationFrame(loop);
 })();
