@@ -268,7 +268,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
         <div class="ttl">この期間の大きな地震</div>
         <ul class="list" id="bigList"></ul>
       </div>
-      <p class="help"><b>操作</b>（Google Earth と同じ）: 左ドラッグで移動、右ドラッグの上下で拡大・縮小、Shift か Ctrl を押して左ドラッグ（またはホイールを押してドラッグ）で回転・傾き、ホイールでマウスの位置へ拡大・縮小、ダブルクリックで寄る。キーは 矢印で移動、Shift＋矢印で回転・傾き、＋ − で拡大・縮小、N で北を上、U で真上から、R で両方。</p>
+      <p class="help"><b>操作</b>: 左ドラッグで移動、右ドラッグで回転（左右）と傾き（上下）、ホイールでマウスの位置へ拡大・縮小、ダブルクリックで寄る。Shift か Ctrl を押して左ドラッグでも回転。キーは 矢印で移動、Shift＋矢印で回転・傾き、＋ − で拡大・縮小、N で北を上、U で真上から、R で両方。スマホは 1 本指で移動、2 本指でひねると回転・広げると拡大・そろえて上下で傾き。</p>
       <p class="note">地震: 米国地質調査所（USGS）の地震カタログ、<span id="asof">2026年10月19日</span>に取得。世界は 1995 年から M5 以上と直近 1 年の M4.5 以上、日本付近は直近 1 年の M2.5 以上も収録（日本付近でも M4 未満はほとんど載っていません）。マグニチュードは USGS の値で、気象庁の発表と違うことがあります。地形: Terrain Tiles（Mapzen / AWS）。プレート境界: Bird (2003) PB2002。活断層: GEM Global Active Faults Database（Styron &amp; Pagani 2020、CC BY-SA 4.0）。断層面は、記録された傾きの向きと角度で地下へ伸ばした目安（深さの記録が無いものは 15 km まで）。沈み込むプレート: USGS Slab2（Hayes 2018）の上面の 20 km ごとの等深線。</p>
     </div>
   </section>
@@ -847,8 +847,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   // ---- 操作（Google マップと同じ） ----
   var controls = new THREE.OrbitControls(camera, canvas);
-  // マウスは Google Earth と同じ操作を自前で扱う（下の「マウス」）。指も自前（twoFinger）。OrbitControls はカメラの向きを保つだけ
-  // （2026-10-19 利用者「左右クリック、ホイールが使いにくい。google earthと同じにして」）
+  // マウスと指は自前で扱う（下の「マウス」と twoFinger）。OrbitControls はカメラの向きを保つだけ
   controls.mouseButtons = { LEFT: -1, MIDDLE: -1, RIGHT: -1 };
   controls.touches = { ONE: null, TWO: null }; // 指は 1 本も 2 本も twoFinger で（指の下の地面が指についてくるように）
   controls.screenSpacePanning = false;
@@ -946,11 +945,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     }
     controls.target.add(d); camera.position.add(d);
   }
-  // 回転（右へ動かすと地図が時計回り）と傾き（下へ動かすと地平線が見える向きへ。Google Earth の「Shift を押して下へドラッグで傾きを上げる」）
+  // 回転と傾き（Ekishirube と同じ OrbitControls の向き: 右へ動かすとカメラが左へ回り込む、上へ動かすと地平線が見える向きへ）
   function orbitBy(dx, dy) {
-    if (state.mode === 'world') { WG.head -= dx; WG.tilt = clamp(WG.tilt + dy, 0, W_TILT); return; }
+    if (state.mode === 'world') { WG.head += dx; WG.tilt = clamp(WG.tilt - dy, 0, W_TILT); return; }
     var off = camera.position.clone().sub(controls.target), sp = new THREE.Spherical().setFromVector3(off);
-    sp.theta += dx; sp.phi = clamp(sp.phi + dy, 0.0001, controls.maxPolarAngle);
+    sp.theta -= dx; sp.phi = clamp(sp.phi - dy, 0.0001, controls.maxPolarAngle);
     camera.position.copy(controls.target).add(off.setFromSpherical(sp)); camera.lookAt(controls.target);
   }
   // 画面の中ほどを中心に拡大・縮小（s < 1 で近づく）
@@ -960,7 +959,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     if (state.mode === 'world') wZoomAbout(wGround(x, y), s);
     else scaleAbout(ground(x, y) || controls.target.clone(), s);
   }
-  // ダブルクリック: 押した所へ半分の距離まで寄る（右のダブルクリックで離れる）
+  // ダブルクリック: 押した所へ半分の距離まで寄る
   function zoomStep(x, y, inward) {
     var f = inward ? 0.5 : 2;
     if (state.mode === 'world') {
@@ -973,43 +972,48 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     }
   }
 
-  // ホイール: マウスの位置へ拡大・縮小
+  // ホイール: マウスの位置へ、なめらかに拡大・縮小（1 目盛りで約 1.25 倍。回した分をためて、毎コマ 3 割ずつ動かす）
+  var wheelZ = null;
   canvas.addEventListener('wheel', function (e) {
     e.preventDefault(); anim = null;
-    var dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
-    zoomAtPoint(e.clientX, e.clientY, clamp(Math.exp(dy * 0.0015), 0.7, 1.4));
+    var dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+    var add = clamp(dy * 0.0022, -0.6, 0.6);
+    if (!wheelZ || Math.hypot(wheelZ.x - e.clientX, wheelZ.y - e.clientY) > 30) wheelZ = { x: e.clientX, y: e.clientY, log: 0 };
+    wheelZ.log = clamp(wheelZ.log + add, -1.5, 1.5);
   }, { passive: false });
+  function stepWheel() {
+    if (!wheelZ) return;
+    var d = wheelZ.log * 0.3;
+    if (Math.abs(wheelZ.log) < 0.002) { wheelZ = null; return; }
+    wheelZ.log -= d;
+    zoomAtPoint(wheelZ.x, wheelZ.y, Math.exp(d));
+  }
 
-  // マウス（Google Earth と同じ）: 左ドラッグで移動、右ドラッグの上下で拡大・縮小、
-  // Shift か Ctrl を押して左ドラッグ、またはホイールを押してドラッグで回転・傾き
-  var mDrag = null, lastRight = 0;
+  // マウス: 左ドラッグで移動、右ドラッグで回転（左右）・傾き（上下）、ホイールで拡大・縮小、ダブルクリックで寄る
+  // （2026-10-19 利用者「拡大・縮小・回転が使いにくい。右クリックで回転してほしいな」。Shift・Ctrl＋左ドラッグでも回転、ホイールを押してドラッグで拡大・縮小）
+  var mDrag = null;
   canvas.addEventListener('pointerdown', function (e) {
     if (e.pointerType !== 'mouse') return;
-    var how = e.button === 0 ? (e.shiftKey || e.ctrlKey || e.metaKey ? 'orbit' : 'move') : e.button === 1 ? 'orbit' : e.button === 2 ? 'zoom' : null;
+    var how = e.button === 0 ? (e.shiftKey || e.ctrlKey || e.metaKey ? 'orbit' : 'move') : e.button === 2 ? 'orbit' : e.button === 1 ? 'zoom' : null;
     if (!how) return;
     if (e.button === 1) e.preventDefault();
-    mDrag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, how: how, h: controls.target.y };
+    wheelZ = null;
+    mDrag = { x: e.clientX, y: e.clientY, how: how, h: controls.target.y };
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', function (e) {
     if (!mDrag) return;
-    var dx = e.clientX - mDrag.x, dy = e.clientY - mDrag.y;
+    var dx = e.clientX - mDrag.x, dy = e.clientY - mDrag.y, k = 2 * Math.PI / Math.max(300, canvas.clientHeight) * 0.8;
     if (mDrag.how === 'move') { if (state.mode === 'world') wGrab(mDrag.x, mDrag.y, e.clientX, e.clientY); else jGrab(mDrag.x, mDrag.y, e.clientX, e.clientY, mDrag.h); }
-    else if (mDrag.how === 'orbit') orbitBy(dx * 0.006, dy * 0.006);
+    else if (mDrag.how === 'orbit') orbitBy(dx * k, dy * k);
     else zoomCenter(Math.exp(-dy * 0.006)); // 下へ動かすと近づく
     mDrag.x = e.clientX; mDrag.y = e.clientY;
   });
-  addEventListener('pointerup', function (e) {
-    if (mDrag && mDrag.how === 'zoom' && Math.hypot(e.clientX - mDrag.x0, e.clientY - mDrag.y0) < 4) {
-      var now = performance.now();
-      if (now - lastRight < 350) { zoomStep(e.clientX, e.clientY, false); lastRight = 0; } else lastRight = now;
-    }
-    mDrag = null;
-  });
+  addEventListener('pointerup', function () { mDrag = null; });
   canvas.addEventListener('dblclick', function (e) { e.preventDefault(); zoomStep(e.clientX, e.clientY, true); });
   canvas.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
 
-  // キー（Google Earth と同じ）: 矢印で移動、Shift＋矢印で回転・傾き、＋ − で拡大・縮小、N で北を上、U で真上から、R で両方
+  // キー: 矢印で移動、Shift＋矢印で回転・傾き、＋ − で拡大・縮小、N で北を上、U で真上から、R で両方
   addEventListener('keydown', function (e) {
     var tg = e.target, tag = tg && tg.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1017,7 +1021,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     var arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }, a = arrows[e.key];
     anim = null;
     if (a) {
-      if (e.shiftKey) orbitBy(a[0] * 0.17, -a[1] * 0.12); // Shift＋上で傾きを下げる（真上からへ）、Shift＋下で上げる
+      if (e.shiftKey) orbitBy(a[0] * 0.17, a[1] * 0.12); // 右ドラッグと同じ向き（Shift＋上で地平線が見える向きへ）
       else if (state.mode === 'world') wGrab(cx, cy, cx - a[0] * step, cy - a[1] * step);
       else jGrab(cx, cy, cx - a[0] * step, cy - a[1] * step, controls.target.y);
     } else if (e.key === '+' || e.key === '=' || e.key === 'PageUp') zoomBtn(1 / 1.5);
@@ -1560,7 +1564,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   function loop(now) {
     requestAnimationFrame(loop);
-    stepAnim(now); stepPlay(now); stepTour(now);
+    stepWheel(); stepAnim(now); stepPlay(now); stepTour(now);
     if (state.mode === 'japan') { if (!anim) controls.update(); }
     else wApply();
     // 近くの面・遠くの面を、見ている距離に合わせる（寄ったときに手前が切れないように）
