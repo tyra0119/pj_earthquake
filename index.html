@@ -181,6 +181,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .panel { width: auto; right: var(--gutter-r); }
   .panel.closed .body { display: none; }
   .info { left: var(--gutter-l); right: calc(var(--gutter-r) + 56px); width: auto; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+  /* スマホでは、起きた順の一覧は画面の 3 分の 1 ほどまで（地図が隠れないように）。カードを出しているあいだは凡例を隠す */
+  .tourcard { max-height: 36vh; padding: 12px 14px; }
+  #app:has(.info:not([hidden])) .legend { display: none; }
   .legend .bar { width: 130px; }
   .legend .sizes { display: none; }
   .clock { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); font-size: 18px; }
@@ -844,10 +847,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   // ---- 操作（Google マップと同じ） ----
   var controls = new THREE.OrbitControls(camera, canvas);
-  // マウスは Google Earth と同じ操作を自前で扱う（下の「マウス」）。OrbitControls は日本の 1 本指の移動だけ
+  // マウスは Google Earth と同じ操作を自前で扱う（下の「マウス」）。指も自前（twoFinger）。OrbitControls はカメラの向きを保つだけ
   // （2026-10-19 利用者「左右クリック、ホイールが使いにくい。google earthと同じにして」）
   controls.mouseButtons = { LEFT: -1, MIDDLE: -1, RIGHT: -1 };
-  controls.touches = { ONE: THREE.TOUCH.PAN, TWO: null }; // 2 本指は twoFinger で
+  controls.touches = { ONE: null, TWO: null }; // 指は 1 本も 2 本も twoFinger で（指の下の地面が指についてくるように）
   controls.screenSpacePanning = false;
   controls.enableZoom = false; // ホイールは指の位置を中心に自前で
   controls.enableDamping = false;
@@ -1029,7 +1032,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   // 2 本指: ひねると回転、広げる・狭めると拡大・縮小、そのまま動かすと移動、横に並べてそろえて上下で傾き。
   // 拡大・縮小と回転は 2 本の指のあいだを中心に。1 本を離しても残った指で動かせる（Ekishirube の twoFinger と同じ作り）。
-  // 世界（地球儀）では 1 本指の移動もここで扱う
+  // 1 本指の移動もここで扱う（日本・世界とも）
   (function twoFinger(dom) {
     var g = null, one = null, h = 0;
     function inf(t) {
@@ -1040,7 +1043,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     function grab(px, py, x, y) { if (state.mode === 'world') wGrab(px, py, x, y); else jGrab(px, py, x, y, h); }
     dom.addEventListener('touchstart', function (e) {
       one = null; anim = null;
-      if (state.mode === 'world' && e.touches.length === 1) { one = { x: e.touches[0].clientX, y: e.touches[0].clientY }; g = null; return; }
+      if (e.touches.length === 1) { one = { x: e.touches[0].clientX, y: e.touches[0].clientY }; g = null; h = controls.target.y; return; }
       if (e.touches.length !== 2) { g = null; return; }
       var i = inf(e.touches);
       g = { first: i, last: i, mode: null, rot: false };
@@ -1089,7 +1092,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       g.last = i;
     }, { passive: false });
     dom.addEventListener('touchend', function (e) {
-      if (e.touches.length === 1 && (g || state.mode === 'world')) { one = { x: e.touches[0].clientX, y: e.touches[0].clientY }; h = controls.target.y; g = null; return; }
+      if (e.touches.length === 1) { one = { x: e.touches[0].clientX, y: e.touches[0].clientY }; h = controls.target.y; g = null; return; }
       if (e.touches.length === 0) { g = null; one = null; }
     });
     dom.addEventListener('touchcancel', function () { g = null; one = null; });
@@ -1528,10 +1531,22 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     });
   }
 
+  // スマホでは、下に出した説明・一覧のカードに隠れないよう、地図の中ほどをカードの上の空いた所へずらす
+  var viewOff = 0;
+  function fitViewToCards() {
+    var off = 0;
+    if (innerWidth <= 680) { var el = !tourCard.hidden ? tourCard : !info.hidden ? info : null; if (el) off = Math.round(el.offsetHeight / 2); }
+    if (off === viewOff) return;
+    viewOff = off;
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    if (off) camera.setViewOffset(w, h, 0, off, w, h); else camera.clearViewOffset();
+  }
+
   // ---- 大きさ ----
   function resize() {
     var w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    viewOff = -1; // カードに合わせたずらしも作り直す
     markerMat.uniforms.uScale.value = renderer.getPixelRatio() * h / (2 * Math.tan(camera.fov / 2 * DEG));
     markerMat.uniforms.uMin.value = 3 * renderer.getPixelRatio();
     tourMat.resolution.set(w, h);
@@ -1552,6 +1567,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     var vd = state.mode === 'japan' ? camera.position.distanceTo(controls.target) : WG.dist;
     var nr = clamp(vd * 0.01, 0.3, 20), fr = state.mode === 'japan' ? 60000 : vd + 2 * R + 1000;
     if (Math.abs(camera.near - nr) > nr * 0.05 || Math.abs(camera.far - fr) > fr * 0.05) { camera.near = nr; camera.far = fr; camera.updateProjectionMatrix(); }
+    fitViewToCards();
     renderer.render(scene, camera);
     updateOverlay(); updateTourBadges();
   }
