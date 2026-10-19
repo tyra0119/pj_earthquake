@@ -6,7 +6,7 @@
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style>
 </head>
 <body>
-<title>日本の地震 3D</title>
+<title>地震Map</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -257,8 +257,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     <header>
       <div class="row">
         <div>
-          <h1 id="ttl">日本の地震 3D</h1>
-          <p class="sub" id="sub">震源を深さまで立体で見る</p>
+          <h1 id="ttl">地震Map</h1>
+          <p class="sub" id="sub">日本の震源を深さまで立体で見る</p>
         </div>
         <button class="fold" id="fold" aria-expanded="false" aria-controls="panelBody">設定</button>
       </div>
@@ -1403,7 +1403,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     japan.visible = !W; world.visible = W; controls.enabled = !W;
     if (W) ensureWorld();
     camera.up.set(0, 1, 0);
-    document.getElementById('ttl').textContent = W ? '世界の地震 3D' : '日本の地震 3D';
+    // アプリ名は「地震Map」（2026-10-20 利用者「アプリ名は「地震Map」」）。日本・世界は下の一行で
+    document.getElementById('sub').textContent = W ? '世界の震源を深さまで立体で見る' : '日本の震源を深さまで立体で見る';
     Array.prototype.forEach.call(document.getElementById('mode').children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === m)); });
     if (W && state.minMag < 4.5) setMinMag(4.5);
     if (!W && state.minMag === 4.5 && (state.period === '30' || state.period === '365')) setMinMag(4);
