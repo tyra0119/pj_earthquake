@@ -41,6 +41,9 @@ body {
 #app { position: fixed; inset: 0; }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
 #gl.hot { cursor: pointer; }
+#gl.selecting, #gl.selecting:active { cursor: crosshair; }
+/* たどる範囲を囲む四角 */
+.selrect { position: absolute; left: 0; top: 0; border: 1.5px dashed var(--accent); background: rgba(255, 181, 71, .08); border-radius: 2px; pointer-events: none; box-sizing: border-box; }
 #gl:active { cursor: grabbing; }
 .num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
 
@@ -96,6 +99,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
 .tourrow { display: flex; gap: 8px; align-items: center; }
 .tourrow > button { flex: none; font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
 .tourrow .chips { flex: 1; grid-template-columns: repeat(3, 1fr); }
+.regionrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.regionrow button { font: inherit; font-size: 12.5px; padding: 5px 10px; border-radius: 6px; border: 1px dashed var(--accent); background: transparent; color: var(--fg); cursor: pointer; }
+.regionrow button[aria-pressed="true"] { background: rgba(255, 181, 71, .18); }
+.regionrow #regionClear { border-style: solid; border-color: var(--line); color: var(--muted); }
+.regionrow span { font-size: 11.5px; color: var(--muted); }
 /* 起きた順（番号の札と一覧） */
 .tb { position: absolute; left: 0; top: 0; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 10px; background: var(--accent); color: #1b1408; font: 700 11px/20px var(--f-data); text-align: center; box-shadow: 0 0 0 2px rgba(5, 11, 22, .8); pointer-events: none; will-change: transform; }
 .tb.now { background: #fff; }
@@ -262,7 +270,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
             <button data-n="50" aria-pressed="false">50件</button>
           </div>
         </div>
-        <p class="help">この期間・大きさの地震から大きい順に選び、起きた順に線で結んで地図の上をたどります。最後に全体を引いて見せます。</p>
+        <div class="regionrow">
+          <button id="regionBtn" aria-pressed="false">範囲を囲む</button>
+          <button id="regionClear" hidden>範囲を消す</button>
+          <span id="regionInfo"></span>
+        </div>
+        <p class="help">この期間・大きさの地震（範囲を囲んだときはその中）から大きい順に選び、起きた順に線で結んで地図の上をたどります。最後に全体を引いて見せます。範囲は「範囲を囲む」を押してから地図の上をドラッグして四角で囲みます。</p>
       </div>
       <div class="grp">
         <div class="ttl">この期間の大きな地震</div>
@@ -319,6 +332,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   </div>
 
   <div class="tip" id="tip" hidden></div>
+  <div class="selrect" id="selRect" hidden></div>
   <div class="toast" id="toast" hidden></div>
 </div>
 
@@ -783,7 +797,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     });
     if (!top.length) { var li = document.createElement('li'); li.className = 'note'; li.textContent = 'この条件に合う地震はありません。'; ul.appendChild(li); }
   }
-  function refresh() { updateQuakes(); updateStats(); updateList(); drawSel(); }
+  function refresh() { updateQuakes(); updateStats(); updateList(); drawSel(); if (typeof updateRegionInfo === 'function' && regionInfo) updateRegionInfo(); }
 
   // ---- 文字 ----
   function cssColor(c) { return 'rgb(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ')'; }
@@ -1292,6 +1306,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   function applyVex() {
     terrain.scale.y = state.vex; plates.scale.y = state.vex; buildFrame(state.vex); buildWGrid(state.vex);
     faultG.japan.scale.y = state.vex; slabG.japan.scale.y = state.vex;
+    if (region) drawRegion();
     if (state.mode === 'world') ensureWorld();
     core.scale.setScalar(R - MAX_DEPTH * state.vex - 20);
   }
@@ -1437,8 +1452,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   }
   function startTour() {
     stopPlay(); select(null); clearTour();
-    var list = vis.slice().sort(function (a, b) { return b.mag - a.mag || a.t - b.t; }).slice(0, tourN).sort(function (a, b) { return a.t - b.t; });
-    if (list.length < 2) { toast('たどるには、この条件で地震が 2 つ以上必要です'); return; }
+    var list = vis.filter(inRegion).sort(function (a, b) { return b.mag - a.mag || a.t - b.t; }).slice(0, tourN).sort(function (a, b) { return a.t - b.t; });
+    if (list.length < 2) { toast(region ? '囲んだ範囲の中に、この条件の地震が 2 つ以上ありません' : 'たどるには、この条件で地震が 2 つ以上必要です'); return; }
     tour = { list: list, i: 0, stage: 'fly', t0: 0, ms: 0, badges: [] };
     tourList.textContent = '';
     list.forEach(function (q, k) {
@@ -1452,7 +1467,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       bt.addEventListener('click', function () { flyToQuake(q, 700); markNow(k); });
       li.hidden = true; li.appendChild(bt); tourList.appendChild(li);
     });
-    tourSub.textContent = (state.period === 'all' ? '1995年から' : dateText(periodStart() + 86400e3, false) + 'から') + '、M' + state.minMag.toFixed(1) + ' 以上の中で大きい順に ' + list.length + ' 件';
+    tourSub.textContent = (region ? '囲んだ範囲の中、' : '') + (state.period === 'all' ? '1995年から' : dateText(periodStart() + 86400e3, false) + 'から') + '、M' + state.minMag.toFixed(1) + ' 以上の中で大きい順に ' + list.length + ' 件';
     document.getElementById('tourSkip').hidden = false; document.getElementById('tourAgain').hidden = true;
     tourCard.hidden = false; tourBtn.textContent = '■ やめる';
     tourGo(0);
@@ -1534,6 +1549,113 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       b.style.transform = 'translate(' + Math.round(s[0] + 6) + 'px,' + Math.round(s[1] - 24) + 'px)' + (b.classList.contains('now') ? ' scale(1.2)' : '');
     });
   }
+
+  // ---- たどる範囲を囲む ----
+  // 2026-10-19 利用者「たどるの範囲が決められるようにしたいな。例えば、マウスで範囲を決めて、その中で辿る」。
+  // 「範囲を囲む」を押してから地図の上をドラッグすると四角で囲める（指でも同じ）。四角の縁を地表に落とした形（緯度・経度の多角形）を範囲にし、
+  // 震央がその中にある地震だけをたどる。範囲は日本・世界のどちらでも使え、「範囲を消す」まで残る
+  var region = null, selecting = false, selStart = null;
+  var selRect = document.getElementById('selRect'), regionBtn = document.getElementById('regionBtn'), regionClear = document.getElementById('regionClear'), regionInfo = document.getElementById('regionInfo');
+  var regionMat = new THREE.LineBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.95, depthTest: false });
+  var regionG = { japan: new THREE.Group(), world: new THREE.Group() };
+  japan.add(regionG.japan); world.add(regionG.world);
+  regionG.japan.renderOrder = regionG.world.renderOrder = 7;
+  function inRegion(q) {
+    if (!region) return true;
+    var p = region.poly, n = p.length, inside = false, x = q.lon, y = q.lat;
+    // 日付変更線をまたぐ範囲のために、経度を範囲の最初の点のまわりへ寄せる
+    var ref = p[0][0]; while (x - ref > 180) x -= 360; while (x - ref < -180) x += 360;
+    for (var i = 0, j = n - 1; i < n; j = i++) {
+      var xi = p[i][0], yi = p[i][1], xj = p[j][0], yj = p[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  // 画面の点 → 地表の経度・緯度（地表に当たらなければ null）
+  function screenToLonLat(x, y) {
+    if (state.mode === 'world') {
+      var h = wGround(x, y); if (!h) return null; h.normalize();
+      return [Math.atan2(-h.z, h.x) / DEG, Math.asin(clamp(h.y, -1, 1)) / DEG];
+    }
+    setRay(x, y);
+    plane.constant = 0;
+    var p = rc.ray.intersectPlane(plane, new V3()); if (!p) return null;
+    var lat = LAT_C - p.z / KM_LAT, lon = LON_C + p.x / (KM_LON * Math.cos(lat * DEG));
+    return [lon, lat];
+  }
+  function drawRegion() {
+    ['japan', 'world'].forEach(function (m) { while (regionG[m].children.length) { var o = regionG[m].children.pop(); o.geometry.dispose(); } });
+    if (!region) return;
+    var p = region.poly, ref = p[0][0], pts = p.map(function (q) { var lon = q[0]; while (lon - ref > 180) lon -= 360; while (lon - ref < -180) lon += 360; return [lon, q[1]]; });
+    ['japan', 'world'].forEach(function (m) {
+      var v = [];
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[i], b = pts[(i + 1) % pts.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.2));
+        for (var s = 0; s < n; s++) {
+          var lon = a[0] + (b[0] - a[0]) * s / n, lat = a[1] + (b[1] - a[1]) * s / n;
+          if (m === 'japan') { var pp = proj(lon, lat); v.push(new V3(pp[0], Math.max(0, elevAt(lon, lat) / 1000) * state.vex + 1, pp[1])); }
+          else v.push(sph(lon, lat, R + 8));
+        }
+      }
+      var line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(v), regionMat); line.renderOrder = 7;
+      regionG[m].add(line);
+    });
+  }
+  function regionCount() { var n = 0; vis.forEach(function (q) { if (inRegion(q)) n++; }); return n; }
+  function updateRegionInfo() {
+    regionClear.hidden = !region;
+    regionInfo.textContent = region ? 'いまの期間・大きさで、囲んだ範囲の中に ' + fmtNum(regionCount()) + ' 件' : '';
+  }
+  function setSelecting(on) {
+    selecting = on; selStart = null; selRect.hidden = true;
+    canvas.classList.toggle('selecting', on);
+    regionBtn.textContent = on ? '囲むのをやめる' : (region ? '範囲を囲み直す' : '範囲を囲む');
+    regionBtn.setAttribute('aria-pressed', String(on));
+    if (on) { clearTour(); toast('地図の上をドラッグして、たどる範囲を四角で囲んでください'); }
+  }
+  function finishSelect(x0, y0, x1, y1) {
+    var l = Math.min(x0, x1), r = Math.max(x0, x1), t = Math.min(y0, y1), b = Math.max(y0, y1);
+    if (r - l < 12 || b - t < 12) { setSelecting(false); toast('囲む範囲が小さすぎます。もう少し大きくドラッグしてください'); return; }
+    // 四角の縁を 1 辺 8 つに分けて地表へ落とす
+    var pts = [], ok = true, N = 8;
+    [[l, t, r, t], [r, t, r, b], [r, b, l, b], [l, b, l, t]].forEach(function (e) {
+      for (var k = 0; k < N; k++) { var p = screenToLonLat(e[0] + (e[2] - e[0]) * k / N, e[1] + (e[3] - e[1]) * k / N); if (!p) ok = false; else pts.push(p); }
+    });
+    setSelecting(false);
+    if (!ok) { toast('四角の角が地面の外（空や地球の外）に出ています。地面の上だけを囲んでください'); return; }
+    region = { poly: pts };
+    drawRegion(); updateRegionInfo(); setSelecting(false);
+    var cnt = regionCount();
+    toast(cnt ? '囲んだ範囲の中の地震 ' + fmtNum(cnt) + ' 件から、たどります' : '囲んだ範囲の中に、いまの期間・大きさの地震がありません');
+  }
+  // 囲んでいるあいだは、ほかの操作より先にここで受け取る（capture）
+  canvas.addEventListener('pointerdown', function (e) {
+    if (!selecting) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    selStart = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 指の再現などで取れなくてもよい */ }
+  }, true);
+  canvas.addEventListener('pointermove', function (e) {
+    if (!selecting) return;
+    e.stopImmediatePropagation();
+    if (!selStart) return;
+    var r = canvas.getBoundingClientRect(), l = Math.min(selStart.x, e.clientX) - r.left, t = Math.min(selStart.y, e.clientY) - r.top;
+    selRect.style.transform = 'translate(' + l + 'px,' + t + 'px)';
+    selRect.style.width = Math.abs(e.clientX - selStart.x) + 'px'; selRect.style.height = Math.abs(e.clientY - selStart.y) + 'px';
+    selRect.hidden = false;
+  }, true);
+  canvas.addEventListener('pointerup', function (e) {
+    if (!selecting) return;
+    e.stopImmediatePropagation();
+    if (selStart) finishSelect(selStart.x, selStart.y, e.clientX, e.clientY);
+  }, true);
+  ['touchstart', 'touchmove', 'touchend'].forEach(function (t) {
+    canvas.addEventListener(t, function (e) { if (selecting) { e.stopImmediatePropagation(); e.preventDefault(); } }, { capture: true, passive: false });
+  });
+  canvas.addEventListener('wheel', function (e) { if (selecting) { e.stopImmediatePropagation(); e.preventDefault(); } }, { capture: true, passive: false });
+  addEventListener('keydown', function (e) { if (selecting && e.key === 'Escape') setSelecting(false); });
+  regionBtn.addEventListener('click', function () { setSelecting(!selecting); });
+  regionClear.addEventListener('click', function () { region = null; clearTour(); drawRegion(); updateRegionInfo(); setSelecting(false); });
 
   // スマホでは、下に出した説明・一覧のカードに隠れないよう、地図の中ほどをカードの上の空いた所へずらす
   var viewOff = 0;
