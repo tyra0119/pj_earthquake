@@ -1,6 +1,6 @@
 # 地震Map（pj_earthquake）
 
-[earthquake](https://github.com/tyra0119/earthquake)（地震Map。日本と世界の地震を立体で見る）の公開用。`scripts/publish.py` の出力だけを置く。index.html にデータを埋め込んである。
+[earthquake](https://github.com/tyra0119/earthquake)（地震Map。日本と世界の地震を立体で見る）の公開用。`scripts/publish.py` の出力だけを置く。index.html にデータを埋め込んである。毎日 6:00（日本時間）に GitHub Actions（`.github/workflows/daily.yml`）が、埋め込んだ分より新しい地震を `latest.json` に取り直し、ページは開いたときにそれを足す。
 
 公開ページ: https://tyra0119.github.io/pj_earthquake/
 

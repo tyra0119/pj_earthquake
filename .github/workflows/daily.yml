@@ -1,0 +1,39 @@
+# 毎朝、前回ページを作ったときより新しい地震を取り直して latest.json を更新する（地震Map）。
+# 元は tyra0119/earthquake の scripts/pj/daily.yml。scripts/publish.py が pj_earthquake の .github/workflows/daily.yml に写す。
+# 2026-10-25 利用者「新しい地震情報は取り直してる？」→「2」（毎日自動で取り直す）
+name: 最新の地震を取り直す
+
+on:
+  schedule:
+    - cron: '0 21 * * *'   # 毎日 6:00（日本時間）
+  workflow_dispatch:        # Actions の画面から手で動かすこともできる
+
+permissions:
+  contents: write
+
+concurrency:
+  group: latest
+  cancel-in-progress: false
+
+jobs:
+  latest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 新しい地震を取る（USGS と気象庁の震源リスト）
+        run: python scripts/build_latest.py snapshot.json latest.json
+      - name: 変わっていたらコミットして push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          if git diff --cached --quiet; then
+            echo "変わりなし"
+          else
+            git commit -m "最新の地震を取り直す（自動、$(TZ=Asia/Tokyo date +%Y-%m-%d)）"
+            git push
+          fi
