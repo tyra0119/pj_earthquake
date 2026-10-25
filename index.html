@@ -196,6 +196,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .tracerow button { flex: none; font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
 .tracerow button:disabled { opacity: .45; cursor: default; }
 .tracerow #traceStop { border-color: var(--line); color: var(--muted); font-weight: 500; }
+.traceopt { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.traceopt .seg { display: flex; gap: 3px; }
+.traceopt .seg button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+.traceopt .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #1b1408; font-weight: 700; }
+.traceopt label { display: flex; align-items: center; gap: 5px; color: var(--fg); cursor: pointer; }
+.traceopt input { accent-color: var(--accent); margin: 0; }
 .clock { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 22px; color: var(--fg); text-shadow: 0 0 8px #000; pointer-events: none; white-space: nowrap; }
 /* 再生中の日付は、数字の枠の幅を決めて（年 4 桁・月日 2 桁）、桁数が変わっても文字が動かないように */
 .dn { display: inline-block; text-align: right; font-family: var(--f-data); font-variant-numeric: tabular-nums; }
@@ -332,6 +338,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
         </div>
         <label for="traceSpeed" class="tsl" style="display:flex;justify-content:space-between;color:var(--muted);font-size:12px;letter-spacing:.05em">速さ <output id="traceSpeedOut" style="color:var(--fg);font-family:var(--f-data)"></output></label>
         <input type="range" id="traceSpeed" min="0" max="100" step="1" value="50">
+        <div class="traceopt">
+          <span>線の形</span>
+          <div class="seg" id="traceShape" aria-label="線の形">
+            <button data-s="arc" aria-pressed="true">弧</button><button data-s="line" aria-pressed="false">直線</button>
+          </div>
+          <label><input type="checkbox" id="traceRipple" checked>波紋</label>
+        </div>
         <p class="help">いまの期間・大きさの地震（範囲を囲んだときはその中）を全部、起きた順に震源どうしを線で結んでたどります。カメラは動かさず、線の先が明るく、たどった跡は薄れて消えます。速さは 1 秒に 1〜10,000 件。たどっているあいだも変えられます。</p>
       </div>
       <div class="grp" id="tourGrp" hidden>
@@ -2461,8 +2474,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     return m;
   }
   var traceMats = [traceMat(1, 0.32, 1.6, 0.1), traceMat(0.35, 0.55, 2.0, 0.2), traceMat(0.1, 1, 2.8, 0.45)];
+  // 線の形（2026-10-25 利用者「直線以外の表現方法あるかな？」→「おすすめで作って。（切替も可能にする）」）:
+  // 弧 = 地面から持ち上げた弧（高さは横の距離の 3 割、3〜400 km）。近くで続いた地震は低い小さな弧、遠くへ跳ぶと高い大きな弧。1 本を ARC_S 本に分けて描く
+  var ARC_S = 8, traceShape = 'arc';
   var traceGeo = new THREE.LineSegmentsGeometry();
-  traceGeo.setPositions(new Float32Array(TCAP * 6)); traceGeo.setColors(new Float32Array(TCAP * 6));
+  traceGeo.setPositions(new Float32Array(TCAP * ARC_S * 6)); traceGeo.setColors(new Float32Array(TCAP * ARC_S * 6));
   traceGeo.instanceCount = 0;
   var traceLines = traceMats.map(function (m, i) { var l = new THREE.LineSegments2(traceGeo, m); l.frustumCulled = false; l.renderOrder = 8 + i; l.visible = false; japan.add(l); return l; });
   var traceBtn = document.getElementById('traceBtn'), traceStopBtn = document.getElementById('traceStop'), traceSpeedIn = document.getElementById('traceSpeed'), tcount = document.getElementById('tcount');
@@ -2471,23 +2487,24 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   traceSpeedIn.addEventListener('input', showTraceSpeed); showTraceSpeed();
   // たどる地震（起きた順）
   function traceBuild() {
-    var t0 = periodStart(), T = ASOF_END, m0 = Math.round(state.minMag * 10), ts = [], ds = [], xs = [], zs = [];
+    var t0 = periodStart(), T = ASOF_END, m0 = Math.round(state.minMag * 10), ts = [], ds = [], xs = [], zs = [], ms = [], gs = [];
     if (JM) {
       var a = lowerBound(JM.t, JM.n, t0), b = lowerBound(JM.t, JM.n, Math.min(T, JMA_END - 1) + 1);
       for (var i = a; i < b; i++) {
         if (JM.m10[i] < m0 || !inRegionLL(JM.lon[i], JM.lat[i])) continue;
-        ts.push(JM.t[i]); ds.push(JM.dep[i]); xs.push(JM.x[i]); zs.push(JM.z[i]);
+        ts.push(JM.t[i]); ds.push(JM.dep[i]); xs.push(JM.x[i]); zs.push(JM.z[i]); ms.push(JM.m10[i] / 10); gs.push(Math.max(0, elevAt(JM.lon[i], JM.lat[i])) / 1000);
       }
     }
     Q.filter(function (q) { return q.jp && q.t >= t0 && q.t <= T && (!JM || q.t >= JMA_END) && q.mag >= state.minMag - 1e-9 && inRegion(q); })
       .sort(function (p, q) { return p.t - q.t; })
-      .forEach(function (q) { ts.push(q.t); ds.push(q.dep); xs.push(q.x); zs.push(q.z); });
+      .forEach(function (q) { ts.push(q.t); ds.push(q.dep); xs.push(q.x); zs.push(q.z); ms.push(q.mag); gs.push(Math.max(0, elevAt(q.lon, q.lat)) / 1000); });
     var n = ts.length;
-    return { n: n, t: Float64Array.from(ts), dep: Float32Array.from(ds), x: Float32Array.from(xs), z: Float32Array.from(zs) };
+    // gnd = 震央の地表の高さ km（波紋を地面に置く）
+    return { n: n, t: Float64Array.from(ts), dep: Float32Array.from(ds), x: Float32Array.from(xs), z: Float32Array.from(zs), mag: Float32Array.from(ms), gnd: Float32Array.from(gs) };
   }
   function clearTrace() {
     if (!trace) return;
-    trace = null;
+    trace = null; clearRipples();
     traceLines.forEach(function (l) { l.visible = false; });
     traceGeo.instanceCount = 0;
     traceBtn.textContent = '▶ 全部をたどる'; traceStopBtn.hidden = true; tcount.hidden = true;
@@ -2511,7 +2528,55 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     traceBtn.textContent = trace.playing ? '❚❚ 止める' : '▶ 続ける';
   });
   traceStopBtn.addEventListener('click', function () { clearTrace(); refresh(); });
+  // 波紋: 地震が起きた所の地面に輪が広がって消える（大きさは M、色は深さ）。速いときに数が多すぎないよう、
+  // M5 未満は 1 秒に 60 個まで（M5 以上はいつも）。輪は時間（1.4 秒）で広がるので、止めているあいだも広がり終わる
+  var RIP_N = 400, RIP_MS = 1400, ripples = [], ripTok = { n: 60, t: 0 };
+  var ripGeo = new THREE.RingGeometry(0.93, 1, 64); ripGeo.rotateX(-Math.PI / 2);
+  var ripA = new THREE.InstancedBufferAttribute(new Float32Array(RIP_N), 1), ripC = new THREE.InstancedBufferAttribute(new Float32Array(RIP_N * 3), 3);
+  ripA.setUsage(THREE.DynamicDrawUsage); ripC.setUsage(THREE.DynamicDrawUsage);
+  ripGeo.setAttribute('aAlpha', ripA); ripGeo.setAttribute('aCol', ripC);
+  var ripMesh = new THREE.InstancedMesh(ripGeo, new THREE.ShaderMaterial({
+    vertexShader: 'attribute float aAlpha; attribute vec3 aCol; varying float vA; varying vec3 vC; void main() { vA = aAlpha; vC = aCol; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'varying float vA; varying vec3 vC; void main() { gl_FragColor = vec4(mix(vC, vec3(1.0), 0.3), vA); }',
+    transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+  }), RIP_N);
+  ripMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); ripMesh.count = 0; ripMesh.frustumCulled = false; ripMesh.renderOrder = 7;
+  japan.add(ripMesh);
+  var traceRippleIn = document.getElementById('traceRipple'), ripM = new THREE.Matrix4();
+  function spawnRipple(L, i, now, sp) {
+    var m = L.mag[i];
+    if (m < 5) { // 小さな地震は 1 秒に 60 個まで
+      ripTok.n = Math.min(60, ripTok.n + (now - ripTok.t) * 0.06); ripTok.t = now;
+      if (ripTok.n < 1) return;
+      ripTok.n -= 1;
+    }
+    if (ripples.length >= RIP_N) ripples.shift();
+    ripples.push({ i: i, x: L.x[i], z: L.z[i], g: L.gnd[i], r: 12 * Math.pow(1.55, m - 2), a: Math.min(1, 0.45 + 0.1 * (m - 2)), c: depthColor(L.dep[i]), born: now });
+  }
+  function stepRipples(now) {
+    if (!ripples.length && !ripMesh.count) return;
+    ripples = ripples.filter(function (p) { return now - p.born < RIP_MS; });
+    var vex = state.vex;
+    ripples.forEach(function (p, k) {
+      var u = (now - p.born) / RIP_MS, e = 1 - Math.pow(1 - u, 3), sc = p.r * (0.08 + 0.92 * e);
+      ripM.makeScale(sc, 1, sc); ripM.setPosition(p.x, p.g * vex + 0.5, p.z);
+      ripMesh.setMatrixAt(k, ripM);
+      ripA.array[k] = p.a * Math.pow(1 - u, 1.5);
+      ripC.array[k * 3] = p.c[0]; ripC.array[k * 3 + 1] = p.c[1]; ripC.array[k * 3 + 2] = p.c[2];
+    });
+    ripMesh.count = ripples.length;
+    ripMesh.instanceMatrix.needsUpdate = true; ripA.needsUpdate = true; ripC.needsUpdate = true;
+  }
+  function clearRipples() { ripples = []; ripMesh.count = 0; }
+  traceRippleIn.addEventListener('change', function () { if (!this.checked) clearRipples(); });
+  document.getElementById('traceShape').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    traceShape = b.dataset.s;
+    Array.prototype.forEach.call(this.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+  });
+
   function stepTrace(now) {
+    stepRipples(now);
     if (!trace) return;
     var L = trace.L, sp = traceSpeed(), tail = Math.max(6, Math.min(TCAP - 2, sp * 1.2)); // 尾の長さ（地震の数）
     if (trace.playing) {
@@ -2525,20 +2590,30 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     var cur = trace.cur, head = Math.min(L.n - 1, Math.floor(cur));
     traceU.uCur.value = cur; traceU.uDim.value = Math.max(0.2, Math.min(1, Math.sqrt(60 / tail)));
     traceMats.forEach(function (m) { m.uniforms.uLen.value = Math.max(1, tail * m.userData.k); });
-    // 尾の範囲の線だけを入れ物に（線 k は地震 k → k+1）
+    // 尾の範囲の線だけを入れ物に（線 k は地震 k → k+1）。弧のときは 1 本を ARC_S 本に分け、途中を持ち上げる
     var i0 = Math.max(0, Math.floor(cur - tail)), i1 = Math.min(L.n - 2, Math.floor(cur)), cnt = Math.max(0, i1 - i0 + 1);
     var pa = traceGeo.attributes.instanceStart.data.array, ca = traceGeo.attributes.instanceColorStart.data.array, vex = state.vex;
+    var S = traceShape === 'arc' ? ARC_S : 1, o = 0;
     for (var s = 0; s < cnt; s++) {
-      var k = i0 + s, o = s * 6;
-      pa[o] = L.x[k]; pa[o + 1] = -L.dep[k] * vex; pa[o + 2] = L.z[k];
-      pa[o + 3] = L.x[k + 1]; pa[o + 4] = -L.dep[k + 1] * vex; pa[o + 5] = L.z[k + 1];
-      var len = Math.hypot(L.x[k + 1] - L.x[k], L.z[k + 1] - L.z[k], L.dep[k + 1] - L.dep[k]); // km
-      ca[o] = k; ca[o + 1] = L.dep[k]; ca[o + 2] = len;
-      ca[o + 3] = k + 1; ca[o + 4] = L.dep[k + 1]; ca[o + 5] = len;
+      var k = i0 + s, ax = L.x[k], ay = -L.dep[k] * vex, az = L.z[k], bx = L.x[k + 1], by = -L.dep[k + 1] * vex, bz = L.z[k + 1];
+      var da = L.dep[k], db = L.dep[k + 1], horiz = Math.hypot(bx - ax, bz - az);
+      var len = Math.hypot(horiz, db - da); // km
+      var hgt = S > 1 ? Math.max(3, Math.min(400, horiz * 0.3)) : 0;
+      for (var j = 0; j < S; j++) {
+        var u0 = j / S, u1 = (j + 1) / S;
+        pa[o] = ax + (bx - ax) * u0; pa[o + 1] = ay + (by - ay) * u0 + hgt * 4 * u0 * (1 - u0); pa[o + 2] = az + (bz - az) * u0;
+        pa[o + 3] = ax + (bx - ax) * u1; pa[o + 4] = ay + (by - ay) * u1 + hgt * 4 * u1 * (1 - u1); pa[o + 5] = az + (bz - az) * u1;
+        ca[o] = k + u0; ca[o + 1] = da + (db - da) * u0; ca[o + 2] = len;
+        ca[o + 3] = k + u1; ca[o + 4] = da + (db - da) * u1; ca[o + 5] = len;
+        o += 6;
+      }
     }
     traceGeo.attributes.instanceStart.data.needsUpdate = true;
     traceGeo.attributes.instanceColorStart.data.needsUpdate = true;
-    traceGeo.instanceCount = cnt;
+    traceGeo.instanceCount = cnt * S;
+    // 波紋: 新しくたどり着いた地震から
+    if (traceRippleIn.checked) for (var ri = (trace.spawned === undefined ? -1 : trace.spawned) + 1; ri <= head; ri++) spawnRipple(L, ri, now, sp);
+    trace.spawned = head;
     // 地震の印も、いまの時点まで（起きたばかりは光る）
     var T = L.t[head];
     if (T !== trace.T) {
