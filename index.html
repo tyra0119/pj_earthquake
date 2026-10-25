@@ -81,6 +81,9 @@ body {
 .plb.origin { color: #fff; font-size: 13px; }
 .plb.hi { color: #fff3d6; }
 @media (min-width: 681px) { .strip { left: calc(var(--gutter-l) + 312px); } }
+/* なぞって囲む線 */
+.lasso { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.lasso path { fill: rgba(255, 181, 71, .08); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; stroke-linejoin: round; }
 .selrect { position: absolute; left: 0; top: 0; border: 1.5px dashed var(--accent); background: rgba(255, 181, 71, .08); border-radius: 2px; pointer-events: none; box-sizing: border-box; }
 #gl:active { cursor: grabbing; }
 .num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
@@ -362,11 +365,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       <div class="grp">
         <div class="ttl">たどる範囲</div>
         <div class="regionrow">
-          <button id="regionBtn" aria-pressed="false">範囲を囲む</button>
+          <button id="regionBtn" aria-pressed="false">四角で囲む</button>
+          <button id="regionLasso" aria-pressed="false">なぞって囲む</button>
           <button id="regionClear" hidden>範囲を消す</button>
           <span id="regionInfo"></span>
         </div>
-        <p class="help">「範囲を囲む」を押してから地図の上をドラッグして四角で囲むと、その中の地震だけをたどります。</p>
+        <p class="help">「四角で囲む」を押してから地図の上をドラッグすると四角で、「なぞって囲む」を押してから地図の上をなぞると、なぞった形で囲めます（離すと始まりの点まで自動で閉じます）。その中の地震だけをたどります。</p>
       </div>
       <div class="grp">
         <div class="ttl">この期間の大きな地震</div>
@@ -425,6 +429,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   <div class="tip" id="tip" hidden></div>
   <div class="selrect" id="selRect" hidden></div>
+  <svg class="lasso" id="lassoSvg" hidden aria-hidden="true"><path id="lassoPath" d=""></path></svg>
 
   <section class="strip" id="strip" hidden aria-label="環太平洋のつながり">
     <div class="shead">
@@ -1928,6 +1933,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   // 「範囲を囲む」を押してから地図の上をドラッグすると四角で囲める（指でも同じ）。四角の縁を地表に落とした形（緯度・経度の多角形）を範囲にし、
   // 震央がその中にある地震だけをたどる。範囲は日本・世界のどちらでも使え、「範囲を消す」まで残る
   var region = null, selecting = false, selStart = null;
+  // 2026-10-25 利用者「範囲の囲み方について 四角のほかに、なぞって囲むってできる？」: 「なぞって囲む」を足した。selecting は false・'rect'・'lasso'
+  var lassoSvg = document.getElementById('lassoSvg'), lassoPath = document.getElementById('lassoPath'), regionLasso = document.getElementById('regionLasso'), lassoPts = [];
   var selRect = document.getElementById('selRect'), regionBtn = document.getElementById('regionBtn'), regionClear = document.getElementById('regionClear'), regionInfo = document.getElementById('regionInfo');
   var regionMat = new THREE.LineBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.95, depthTest: false });
   var regionG = { japan: new THREE.Group(), world: new THREE.Group() };
@@ -1984,11 +1991,34 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     regionInfo.textContent = region ? 'いまの期間・大きさで、囲んだ範囲の中に ' + fmtNum(regionCount()) + ' 件' : '';
   }
   function setSelecting(on) {
-    selecting = on; selStart = null; selRect.hidden = true;
-    canvas.classList.toggle('selecting', on);
-    regionBtn.textContent = on ? '囲むのをやめる' : (region ? '範囲を囲み直す' : '範囲を囲む');
-    regionBtn.setAttribute('aria-pressed', String(on));
-    if (on) { clearTour(); toast('地図の上をドラッグして、たどる範囲を四角で囲んでください'); }
+    selecting = on; selStart = null; selRect.hidden = true; lassoSvg.hidden = true; lassoPts = [];
+    canvas.classList.toggle('selecting', !!on);
+    regionBtn.textContent = on === 'rect' ? '囲むのをやめる' : '四角で囲む';
+    regionLasso.textContent = on === 'lasso' ? '囲むのをやめる' : 'なぞって囲む';
+    regionBtn.setAttribute('aria-pressed', String(on === 'rect')); regionLasso.setAttribute('aria-pressed', String(on === 'lasso'));
+    if (on) { clearTour(); toast(on === 'rect' ? '地図の上をドラッグして、たどる範囲を四角で囲んでください' : '地図の上をなぞって、たどる範囲を囲んでください（離すと閉じます）'); }
+  }
+  // 範囲が決まったあと（四角・なぞる共通）
+  function setRegion(pts) {
+    region = { poly: pts }; clearTrace();
+    drawRegion(); updateRegionInfo(); setSelecting(false);
+    var cnt = regionCount();
+    toast(cnt ? '囲んだ範囲の中の地震 ' + fmtNum(cnt) + ' 件から、たどります' : '囲んだ範囲の中に、いまの期間・大きさの地震がありません');
+  }
+  // なぞった線を地表へ落として範囲に（点が多すぎないよう 150 点までに間引く）
+  function finishLasso(pts) {
+    setSelecting(false);
+    var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+    if (pts.length < 3 || Math.max.apply(null, xs) - Math.min.apply(null, xs) < 12 || Math.max.apply(null, ys) - Math.min.apply(null, ys) < 12) { toast('囲む範囲が小さすぎます。もう少し大きくなぞってください'); return; }
+    var step = Math.max(1, Math.ceil(pts.length / 150)), out = [], ok = true;
+    for (var i = 0; i < pts.length; i += step) { var p = screenToLonLat(pts[i][0], pts[i][1]); if (!p) { ok = false; break; } out.push(p); }
+    if (!ok) { toast('なぞった線が地面の外（空や地球の外）に出ています。地面の上だけをなぞってください'); return; }
+    setRegion(out);
+  }
+  function drawLasso() {
+    var r = canvas.getBoundingClientRect();
+    lassoPath.setAttribute('d', lassoPts.map(function (p, i) { return (i ? 'L' : 'M') + (p[0] - r.left).toFixed(1) + ' ' + (p[1] - r.top).toFixed(1); }).join(' ') + (lassoPts.length > 2 ? ' Z' : ''));
+    lassoSvg.hidden = false;
   }
   function finishSelect(x0, y0, x1, y1) {
     var l = Math.min(x0, x1), r = Math.max(x0, x1), t = Math.min(y0, y1), b = Math.max(y0, y1);
@@ -2000,22 +2030,25 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     });
     setSelecting(false);
     if (!ok) { toast('四角の角が地面の外（空や地球の外）に出ています。地面の上だけを囲んでください'); return; }
-    region = { poly: pts }; clearTrace();
-    drawRegion(); updateRegionInfo(); setSelecting(false);
-    var cnt = regionCount();
-    toast(cnt ? '囲んだ範囲の中の地震 ' + fmtNum(cnt) + ' 件から、たどります' : '囲んだ範囲の中に、いまの期間・大きさの地震がありません');
+    setRegion(pts);
   }
   // 囲んでいるあいだは、ほかの操作より先にここで受け取る（capture）
   canvas.addEventListener('pointerdown', function (e) {
     if (!selecting) return;
     e.stopImmediatePropagation(); e.preventDefault();
     selStart = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    if (selecting === 'lasso') { lassoPts = [[e.clientX, e.clientY]]; drawLasso(); }
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 指の再現などで取れなくてもよい */ }
   }, true);
   canvas.addEventListener('pointermove', function (e) {
     if (!selecting) return;
     e.stopImmediatePropagation();
     if (!selStart) return;
+    if (selecting === 'lasso') { // 4 画素より動いたら点を足す
+      var lp = lassoPts[lassoPts.length - 1];
+      if (Math.hypot(e.clientX - lp[0], e.clientY - lp[1]) >= 4) { lassoPts.push([e.clientX, e.clientY]); drawLasso(); }
+      return;
+    }
     var r = canvas.getBoundingClientRect(), l = Math.min(selStart.x, e.clientX) - r.left, t = Math.min(selStart.y, e.clientY) - r.top;
     selRect.style.transform = 'translate(' + l + 'px,' + t + 'px)';
     selRect.style.width = Math.abs(e.clientX - selStart.x) + 'px'; selRect.style.height = Math.abs(e.clientY - selStart.y) + 'px';
@@ -2024,14 +2057,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   canvas.addEventListener('pointerup', function (e) {
     if (!selecting) return;
     e.stopImmediatePropagation();
-    if (selStart) finishSelect(selStart.x, selStart.y, e.clientX, e.clientY);
+    if (selStart) { if (selecting === 'lasso') finishLasso(lassoPts.concat([[e.clientX, e.clientY]])); else finishSelect(selStart.x, selStart.y, e.clientX, e.clientY); }
   }, true);
   ['touchstart', 'touchmove', 'touchend'].forEach(function (t) {
     canvas.addEventListener(t, function (e) { if (selecting) { e.stopImmediatePropagation(); e.preventDefault(); } }, { capture: true, passive: false });
   });
   canvas.addEventListener('wheel', function (e) { if (selecting) { e.stopImmediatePropagation(); e.preventDefault(); } }, { capture: true, passive: false });
   addEventListener('keydown', function (e) { if (selecting && e.key === 'Escape') setSelecting(false); });
-  regionBtn.addEventListener('click', function () { setSelecting(!selecting); });
+  regionBtn.addEventListener('click', function () { setSelecting(selecting === 'rect' ? false : 'rect'); });
+  regionLasso.addEventListener('click', function () { setSelecting(selecting === 'lasso' ? false : 'lasso'); });
   regionClear.addEventListener('click', function () { region = null; clearTour(); clearTrace(); drawRegion(); updateRegionInfo(); setSelecting(false); });
 
   // ---- 環太平洋の時空図 ----
