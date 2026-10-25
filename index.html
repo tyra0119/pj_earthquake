@@ -190,6 +190,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .info dd { margin: 0; min-width: 0; }
 
 /* 再生中の日付 */
+/* 全部を線でたどるときの件数（日付の下） */
+.tcount { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 50px); left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 13px; color: var(--muted); text-shadow: 0 0 6px #000; pointer-events: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tracerow { display: flex; gap: 8px; align-items: center; }
+.tracerow button { flex: none; font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+.tracerow button:disabled { opacity: .45; cursor: default; }
+.tracerow #traceStop { border-color: var(--line); color: var(--muted); font-weight: 500; }
 .clock { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 22px; color: var(--fg); text-shadow: 0 0 8px #000; pointer-events: none; white-space: nowrap; }
 /* 再生中の日付は、数字の枠の幅を決めて（年 4 桁・月日 2 桁）、桁数が変わっても文字が動かないように */
 .dn { display: inline-block; text-align: right; font-family: var(--f-data); font-variant-numeric: tabular-nums; }
@@ -244,6 +250,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .legend .bar { width: 130px; }
   .legend .sizes { display: none; }
   .clock { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); font-size: 18px; }
+  .tcount { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 66px); }
 }
 @media (min-width: 681px) { .fold { display: none; } }
 @media (prefers-reduced-motion: reduce) { .pulse::after { animation: none; } }
@@ -317,6 +324,16 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
         <p class="help">環太平洋を 15 の場所に分け、選んだ場所で大地震が起きたあと、決めた日数のうちに大地震が起きた場所と回数を、偶然（日付をでたらめにしたとき）と比べて出します。地球儀には矢印で描きます。「時空図」のタブでは、地震帯を一本の線に伸ばして年ごとに並べた図も見られます。</p>
       </div>
       <div class="grp">
+        <div class="ttl">全部を線でたどる（日本）</div>
+        <div class="tracerow">
+          <button id="traceBtn">▶ 全部をたどる</button>
+          <button id="traceStop" hidden>■ やめる</button>
+        </div>
+        <label for="traceSpeed" class="tsl" style="display:flex;justify-content:space-between;color:var(--muted);font-size:12px;letter-spacing:.05em">速さ <output id="traceSpeedOut" style="color:var(--fg);font-family:var(--f-data)"></output></label>
+        <input type="range" id="traceSpeed" min="0" max="100" step="1" value="50">
+        <p class="help">日本の表示で、いまの期間・大きさの地震（範囲を囲んだときはその中）を全部、起きた順に震源どうしを線で結んでたどります。カメラは動かさず、線の先が明るく、たどった跡は薄れて消えます。速さは 1 秒に 1〜10,000 件。たどっているあいだも変えられます。</p>
+      </div>
+      <div class="grp">
         <div class="ttl">起きた順にたどる</div>
         <div class="tourrow">
           <button id="tourBtn">▶ たどる</button>
@@ -363,6 +380,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   </aside>
 
   <div class="clock" id="clock" hidden></div>
+  <div class="tcount" id="tcount" hidden></div>
 
   <div class="legend" aria-label="凡例">
     <div>
@@ -1586,7 +1604,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   function setMode(m, first) {
     if (m === state.mode && !first) return;
     if (!first && state.mode === 'japan') { jSave = { p: camera.position.clone(), t: controls.target.clone() }; jMinSave = state.minMag; }
-    stopPlay(); anim = null; clearTour();
+    stopPlay(); anim = null; clearTour(); clearTrace();
+    traceBtn.disabled = m !== 'japan'; traceBtn.title = m !== 'japan' ? '日本の表示で使えます' : '';
     state.mode = m;
     var W = m === 'world';
     japan.visible = !W; world.visible = W; controls.enabled = !W;
@@ -1622,7 +1641,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   document.getElementById('period').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
-    state.period = b.dataset.p; clearTour();
+    state.period = b.dataset.p; clearTour(); clearTrace();
     Array.prototype.forEach.call(this.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); });
     worldMagFloor();
     stopPlay(); state.T = ASOF_END; scrub.value = 1000; showClock(false);
@@ -1631,7 +1650,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   });
   var minMag = document.getElementById('minMag');
   function setMinMag(v) { state.minMag = v; minMag.value = v; document.getElementById('minMagOut').textContent = 'M' + v.toFixed(1) + ' 以上'; }
-  minMag.addEventListener('input', function () { setMinMag(+minMag.value); clearTour(); refresh(); });
+  minMag.addEventListener('input', function () { setMinMag(+minMag.value); clearTour(); clearTrace(); refresh(); });
   var vexIn = document.getElementById('vex');
   // 世界の断層・等深線は深さの強調で位置が変わるので作り直す（世界を見ているときだけ）
   var worldVex = null;
@@ -1683,7 +1702,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   playBtn.addEventListener('click', function () {
     if (state.playing) { stopPlay(); refresh(); return; }
     if (state.T >= ASOF_END) state.T = periodStart();
-    clearTour();
+    clearTour(); clearTrace();
     state.playing = true; playBtn.textContent = '❚❚ 止める'; lastFrame = performance.now(); showClock(true);
   });
   scrub.addEventListener('input', function () {
@@ -1963,7 +1982,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     });
     setSelecting(false);
     if (!ok) { toast('四角の角が地面の外（空や地球の外）に出ています。地面の上だけを囲んでください'); return; }
-    region = { poly: pts };
+    region = { poly: pts }; clearTrace();
     drawRegion(); updateRegionInfo(); setSelecting(false);
     var cnt = regionCount();
     toast(cnt ? '囲んだ範囲の中の地震 ' + fmtNum(cnt) + ' 件から、たどります' : '囲んだ範囲の中に、いまの期間・大きさの地震がありません');
@@ -1995,7 +2014,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   canvas.addEventListener('wheel', function (e) { if (selecting) { e.stopImmediatePropagation(); e.preventDefault(); } }, { capture: true, passive: false });
   addEventListener('keydown', function (e) { if (selecting && e.key === 'Escape') setSelecting(false); });
   regionBtn.addEventListener('click', function () { setSelecting(!selecting); });
-  regionClear.addEventListener('click', function () { region = null; clearTour(); drawRegion(); updateRegionInfo(); setSelecting(false); });
+  regionClear.addEventListener('click', function () { region = null; clearTour(); clearTrace(); drawRegion(); updateRegionInfo(); setSelecting(false); });
 
   // ---- 環太平洋の時空図 ----
   // 2026-10-19 利用者「環太平洋火山帯で、ここで大きな地震が発生すると、次はこっちで大きな地震が、というように過去何度かあったように思う。
@@ -2398,6 +2417,134 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   document.getElementById('stripTab').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) setTab(b.dataset.t); });
 
 
+  // ---- 全部を線でたどる（日本） ----
+  // 2026-10-25 利用者「観測できた地震全部をたどる。たどった地震の表現方法は、画面をスクロールするのではなく、たどった線を表示して表現してみたい。
+  // たどるスピードが調整できれば、見る側は何か気づきがあるかもしれない」「線はBustrackerの軌跡のような表示がのぞましい」。
+  // いまの期間・大きさ（範囲を囲んだときはその中）の地震を全部、起きた順に震源どうしを線で結ぶ。カメラは動かさない。
+  // 線は BusTracker の軌跡（deck.gl の TripsLayer）と同じ見せ方: 先頭が明るく、離れるほど薄れて消える尾を 3 本重ねる（長く淡い・中くらい・短く明るい）、
+  // 暗い背景に光を足す（加算合成）、速くしたら尾を伸ばす（画面の上で 1.2 秒ぶん）。色は震源の深さの色
+  var trace = null;
+  var TCAP = 13000; // 一度に描く線の数の上限（尾の長さ。速さ 10,000 件/秒 × 1.2 秒）
+  var traceU = { uCur: { value: 0 }, uDim: { value: 1 } };
+  var TRACE_HEAD = 'uniform float uCur; uniform float uLen; uniform float uWhite; uniform float uDim;\n' +
+    'vec3 depthRamp(float d) {\n' +
+    '  vec3 c0 = vec3(1.0, 0.29, 0.24), c1 = vec3(1.0, 0.541, 0.165), c2 = vec3(1.0, 0.824, 0.247), c3 = vec3(0.349, 0.827, 0.549), c4 = vec3(0.227, 0.651, 1.0), c5 = vec3(0.478, 0.42, 1.0), c6 = vec3(0.761, 0.482, 1.0);\n' +
+    '  if (d < 30.0) return mix(c0, c1, d / 30.0);\n' +
+    '  if (d < 70.0) return mix(c1, c2, (d - 30.0) / 40.0);\n' +
+    '  if (d < 150.0) return mix(c2, c3, (d - 70.0) / 80.0);\n' +
+    '  if (d < 300.0) return mix(c3, c4, (d - 150.0) / 150.0);\n' +
+    '  if (d < 500.0) return mix(c4, c5, (d - 300.0) / 200.0);\n' +
+    '  return mix(c5, c6, clamp((d - 500.0) / 200.0, 0.0, 1.0));\n' +
+    '}\n';
+  // vColor.r = 何番目の地震か（線の上でなめらかに変わる）、vColor.g = 深さ km、vColor.b = その線の長さ km
+  // 尾が長い（速い）ときは重なって白く飛ばないよう全体を淡く（uDim）、遠くへ跳ぶ長い線は淡く（近くで続けて起きた地震が目立つように）
+  var TRACE_FRAG = 'float qi = vColor.r;\n' +
+    'if (qi > uCur) discard;\n' +
+    'float age = uCur - qi;\n' +
+    'if (age > uLen) discard;\n' +
+    'float ff = 1.0 - age / uLen;\n' +
+    'diffuseColor.rgb = mix(depthRamp(vColor.g), vec3(1.0), uWhite * ff * ff);\n' +
+    'alpha *= ff * uDim * clamp(400.0 / max(vColor.b, 1.0), 0.3, 1.0);\n';
+  function traceMat(k, opacity, width, white) {
+    var m = new THREE.LineMaterial({ vertexColors: true, linewidth: width, transparent: true, opacity: opacity, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
+    m.uniforms.uCur = traceU.uCur; m.uniforms.uDim = traceU.uDim; m.uniforms.uLen = { value: 10 }; m.uniforms.uWhite = { value: white };
+    m.userData.k = k;
+    m.onBeforeCompile = function (sh) {
+      sh.fragmentShader = TRACE_HEAD + sh.fragmentShader.replace('#include <color_fragment>', TRACE_FRAG);
+    };
+    m.customProgramCacheKey = function () { return 'quaketrace'; };
+    return m;
+  }
+  var traceMats = [traceMat(1, 0.32, 1.6, 0.1), traceMat(0.35, 0.55, 2.0, 0.2), traceMat(0.1, 1, 2.8, 0.45)];
+  var traceGeo = new THREE.LineSegmentsGeometry();
+  traceGeo.setPositions(new Float32Array(TCAP * 6)); traceGeo.setColors(new Float32Array(TCAP * 6));
+  traceGeo.instanceCount = 0;
+  var traceLines = traceMats.map(function (m, i) { var l = new THREE.LineSegments2(traceGeo, m); l.frustumCulled = false; l.renderOrder = 8 + i; l.visible = false; japan.add(l); return l; });
+  var traceBtn = document.getElementById('traceBtn'), traceStopBtn = document.getElementById('traceStop'), traceSpeedIn = document.getElementById('traceSpeed'), tcount = document.getElementById('tcount');
+  function traceSpeed() { return Math.round(Math.pow(10, +traceSpeedIn.value / 25)); } // 1〜10,000 件/秒
+  function showTraceSpeed() { document.getElementById('traceSpeedOut').textContent = fmtNum(traceSpeed()) + ' 件/秒'; }
+  traceSpeedIn.addEventListener('input', showTraceSpeed); showTraceSpeed();
+  // たどる地震（起きた順）
+  function traceBuild() {
+    var t0 = periodStart(), T = ASOF_END, m0 = Math.round(state.minMag * 10), ts = [], ds = [], xs = [], zs = [];
+    if (JM) {
+      var a = lowerBound(JM.t, JM.n, t0), b = lowerBound(JM.t, JM.n, Math.min(T, JMA_END - 1) + 1);
+      for (var i = a; i < b; i++) {
+        if (JM.m10[i] < m0 || !inRegionLL(JM.lon[i], JM.lat[i])) continue;
+        ts.push(JM.t[i]); ds.push(JM.dep[i]); xs.push(JM.x[i]); zs.push(JM.z[i]);
+      }
+    }
+    Q.filter(function (q) { return q.jp && q.t >= t0 && q.t <= T && (!JM || q.t >= JMA_END) && q.mag >= state.minMag - 1e-9 && inRegion(q); })
+      .sort(function (p, q) { return p.t - q.t; })
+      .forEach(function (q) { ts.push(q.t); ds.push(q.dep); xs.push(q.x); zs.push(q.z); });
+    var n = ts.length;
+    return { n: n, t: Float64Array.from(ts), dep: Float32Array.from(ds), x: Float32Array.from(xs), z: Float32Array.from(zs) };
+  }
+  function clearTrace() {
+    if (!trace) return;
+    trace = null;
+    traceLines.forEach(function (l) { l.visible = false; });
+    traceGeo.instanceCount = 0;
+    traceBtn.textContent = '▶ 全部をたどる'; traceStopBtn.hidden = true; tcount.hidden = true;
+    state.T = ASOF_END; showClock(false); scrub.value = 1000;
+  }
+  function startTrace() {
+    if (state.mode !== 'japan') return;
+    stopPlay(); clearTour(); select(null);
+    var L = traceBuild();
+    if (L.n < 2) { toast('たどるには、この条件で地震が 2 つ以上必要です'); return; }
+    trace = { L: L, cur: 0, playing: true, last: performance.now(), done: false };
+    traceLines.forEach(function (l) { l.visible = true; });
+    traceBtn.textContent = '❚❚ 止める'; traceStopBtn.hidden = false; tcount.hidden = false;
+    clock.hidden = false;
+    toast(fmtNum(L.n) + ' 件の地震を、起きた順に線でたどります');
+  }
+  traceBtn.addEventListener('click', function () {
+    if (!trace) return startTrace();
+    if (trace.done) { clearTrace(); return startTrace(); }
+    trace.playing = !trace.playing; trace.last = performance.now();
+    traceBtn.textContent = trace.playing ? '❚❚ 止める' : '▶ 続ける';
+  });
+  traceStopBtn.addEventListener('click', function () { clearTrace(); refresh(); });
+  function stepTrace(now) {
+    if (!trace) return;
+    var L = trace.L, sp = traceSpeed(), tail = Math.max(6, Math.min(TCAP - 2, sp * 1.2)); // 尾の長さ（地震の数）
+    if (trace.playing) {
+      var dt = Math.min(0.1, (now - trace.last) / 1000); trace.last = now;
+      trace.cur += sp * dt;
+      if (trace.cur >= L.n - 1 + tail) { // 最後の地震まで行って、尾が消えたら終わり
+        trace.cur = L.n - 1 + tail; trace.playing = false; trace.done = true;
+        traceBtn.textContent = '▶ もう一度'; toast(fmtNum(L.n) + ' 件を全部たどりました');
+      }
+    }
+    var cur = trace.cur, head = Math.min(L.n - 1, Math.floor(cur));
+    traceU.uCur.value = cur; traceU.uDim.value = Math.max(0.2, Math.min(1, Math.sqrt(60 / tail)));
+    traceMats.forEach(function (m) { m.uniforms.uLen.value = Math.max(1, tail * m.userData.k); });
+    // 尾の範囲の線だけを入れ物に（線 k は地震 k → k+1）
+    var i0 = Math.max(0, Math.floor(cur - tail)), i1 = Math.min(L.n - 2, Math.floor(cur)), cnt = Math.max(0, i1 - i0 + 1);
+    var pa = traceGeo.attributes.instanceStart.data.array, ca = traceGeo.attributes.instanceColorStart.data.array, vex = state.vex;
+    for (var s = 0; s < cnt; s++) {
+      var k = i0 + s, o = s * 6;
+      pa[o] = L.x[k]; pa[o + 1] = -L.dep[k] * vex; pa[o + 2] = L.z[k];
+      pa[o + 3] = L.x[k + 1]; pa[o + 4] = -L.dep[k + 1] * vex; pa[o + 5] = L.z[k + 1];
+      var len = Math.hypot(L.x[k + 1] - L.x[k], L.z[k + 1] - L.z[k], L.dep[k + 1] - L.dep[k]); // km
+      ca[o] = k; ca[o + 1] = L.dep[k]; ca[o + 2] = len;
+      ca[o + 3] = k + 1; ca[o + 4] = L.dep[k + 1]; ca[o + 5] = len;
+    }
+    traceGeo.attributes.instanceStart.data.needsUpdate = true;
+    traceGeo.attributes.instanceColorStart.data.needsUpdate = true;
+    traceGeo.instanceCount = cnt;
+    // 地震の印も、いまの時点まで（起きたばかりは光る）
+    var T = L.t[head];
+    if (T !== trace.T) {
+      trace.T = T; state.T = trace.done ? ASOF_END : T;
+      updateQuakes();
+      if (!trace.statN || ++trace.statN > 15) { updateStats(); trace.statN = 1; }
+      setDate(clock, T);
+    }
+    tcount.textContent = fmtNum(head + 1) + ' / ' + fmtNum(L.n) + ' 件';
+  }
+
   // スマホでは、下に出した説明・一覧のカードに隠れないよう、地図の中ほどをカードの上の空いた所へずらす
   var viewOff = 0;
   function fitViewToCards() {
@@ -2419,6 +2566,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     markerMat.uniforms.uScale.value = renderer.getPixelRatio() * h / (2 * Math.tan(camera.fov / 2 * DEG));
     markerMat.uniforms.uMin.value = 3 * renderer.getPixelRatio();
     tourMat.resolution.set(w, h); arcMat.resolution.set(w, h);
+    if (typeof traceMats !== 'undefined') traceMats.forEach(function (m) { m.resolution.set(w, h); });
   }
   addEventListener('resize', resize);
 
@@ -2431,7 +2579,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   function loop(now) {
     requestAnimationFrame(loop);
-    stepWheel(); stepAnim(now); stepPlay(now); stepTour(now);
+    stepWheel(); stepAnim(now); stepPlay(now); stepTour(now); stepTrace(now);
     if (state.mode === 'japan') { if (!anim) controls.update(); }
     else wApply();
     // 近くの面・遠くの面を、見ている距離に合わせる（寄ったときに手前が切れないように）
