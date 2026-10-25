@@ -323,17 +323,18 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
         <div class="tourrow"><button id="stripBtn">つながりを見る</button></div>
         <p class="help">環太平洋を 15 の場所に分け、選んだ場所で大地震が起きたあと、決めた日数のうちに大地震が起きた場所と回数を、偶然（日付をでたらめにしたとき）と比べて出します。地球儀には矢印で描きます。「時空図」のタブでは、地震帯を一本の線に伸ばして年ごとに並べた図も見られます。</p>
       </div>
-      <div class="grp">
-        <div class="ttl">全部を線でたどる（日本）</div>
+      <!-- 日本では「全部を線でたどる」だけ、世界では「起きた順にたどる」だけを出す（2026-10-25 利用者「日本では、「たどる」は不要」）。範囲を囲むのは両方で使う -->
+      <div class="grp" id="traceGrp">
+        <div class="ttl">全部を線でたどる</div>
         <div class="tracerow">
           <button id="traceBtn">▶ 全部をたどる</button>
           <button id="traceStop" hidden>■ やめる</button>
         </div>
         <label for="traceSpeed" class="tsl" style="display:flex;justify-content:space-between;color:var(--muted);font-size:12px;letter-spacing:.05em">速さ <output id="traceSpeedOut" style="color:var(--fg);font-family:var(--f-data)"></output></label>
         <input type="range" id="traceSpeed" min="0" max="100" step="1" value="50">
-        <p class="help">日本の表示で、いまの期間・大きさの地震（範囲を囲んだときはその中）を全部、起きた順に震源どうしを線で結んでたどります。カメラは動かさず、線の先が明るく、たどった跡は薄れて消えます。速さは 1 秒に 1〜10,000 件。たどっているあいだも変えられます。</p>
+        <p class="help">いまの期間・大きさの地震（範囲を囲んだときはその中）を全部、起きた順に震源どうしを線で結んでたどります。カメラは動かさず、線の先が明るく、たどった跡は薄れて消えます。速さは 1 秒に 1〜10,000 件。たどっているあいだも変えられます。</p>
       </div>
-      <div class="grp">
+      <div class="grp" id="tourGrp" hidden>
         <div class="ttl">起きた順にたどる</div>
         <div class="tourrow">
           <button id="tourBtn">▶ たどる</button>
@@ -343,12 +344,16 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
             <button data-n="50" aria-pressed="false">50件</button>
           </div>
         </div>
+        <p class="help">この期間・大きさの地震（範囲を囲んだときはその中）から大きい順に選び、起きた順に線で結んで地図の上をたどります。最後に全体を引いて見せます。</p>
+      </div>
+      <div class="grp">
+        <div class="ttl">たどる範囲</div>
         <div class="regionrow">
           <button id="regionBtn" aria-pressed="false">範囲を囲む</button>
           <button id="regionClear" hidden>範囲を消す</button>
           <span id="regionInfo"></span>
         </div>
-        <p class="help">この期間・大きさの地震（範囲を囲んだときはその中）から大きい順に選び、起きた順に線で結んで地図の上をたどります。最後に全体を引いて見せます。範囲は「範囲を囲む」を押してから地図の上をドラッグして四角で囲みます。</p>
+        <p class="help">「範囲を囲む」を押してから地図の上をドラッグして四角で囲むと、その中の地震だけをたどります。</p>
       </div>
       <div class="grp">
         <div class="ttl">この期間の大きな地震</div>
@@ -1605,7 +1610,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     if (m === state.mode && !first) return;
     if (!first && state.mode === 'japan') { jSave = { p: camera.position.clone(), t: controls.target.clone() }; jMinSave = state.minMag; }
     stopPlay(); anim = null; clearTour(); clearTrace();
-    traceBtn.disabled = m !== 'japan'; traceBtn.title = m !== 'japan' ? '日本の表示で使えます' : '';
+    document.getElementById('traceGrp').hidden = m !== 'japan'; document.getElementById('tourGrp').hidden = m === 'japan';
     state.mode = m;
     var W = m === 'world';
     japan.visible = !W; world.visible = W; controls.enabled = !W;
