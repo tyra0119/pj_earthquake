@@ -229,6 +229,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
 .mb { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--btn); color: var(--btn-fg); display: grid; place-items: center; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.4); padding: 0; }
+#btnNorth { touch-action: none; } /* なぞって回すとき、ページが動かないように */
 .mb:hover { background: #ffffff; }
 .mb svg { width: 22px; height: 22px; display: block; }
 .zoom { display: flex; flex-direction: column; background: var(--btn); border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.4); overflow: hidden; }
@@ -376,7 +377,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
         <div class="ttl">この期間の大きな地震</div>
         <ul class="list" id="bigList"></ul>
       </div>
-      <p class="help"><b>操作</b>: 左ドラッグで移動、右ドラッグで回転（左右）と傾き（上下）、ホイールでマウスの位置へ拡大・縮小、ダブルクリックで寄る。Shift か Ctrl を押して左ドラッグでも回転。キーは 矢印で移動、Shift＋矢印で回転・傾き、＋ − で拡大・縮小、N で北を上、U で真上から、R で両方。スマホは 1 本指で移動、2 本指でひねると回転・広げると拡大・そろえて上下で傾き。</p>
+      <p class="help"><b>操作</b>: 左ドラッグで移動、右ドラッグで回転（左右）と傾き（上下）、ホイールでマウスの位置へ拡大・縮小、ダブルクリックで寄る。Shift か Ctrl を押して左ドラッグでも回転。キーは 矢印で移動、Shift＋矢印で回転・傾き、＋ − で拡大・縮小、N で北を上、U で真上から、R で両方。スマホは 1 本指で移動、2 本指でひねると回転・広げると拡大・そろえて上下で傾き。右下の方角のボタンを左右になぞっても回せます（上下で傾き）。</p>
       <p class="note">地震: 米国地質調査所（USGS）の地震カタログ、<span id="asof">2026年10月19日</span>に取得。世界は 1900〜1994 年の M7 以上、1995 年から M5 以上、直近 1 年の M4.5 以上、日本付近は直近 1 年の M2.5 以上も収録（日本付近でも M4 未満はほとんど載っていません）。マグニチュードは USGS の値で、気象庁の発表と違うことがあります。日本の表示の地震: 1919〜2024 年は気象庁「震源データ」（https://www.data.jma.go.jp/eqev/data/bulletin/hypo.html）、2025 年からは気象庁「震源リスト」（https://www.data.jma.go.jp/eqev/data/daily_map/index.html、暫定の値）を加工して作成（日本付近の M2 以上）。それより新しい日は USGS。地形: Terrain Tiles（Mapzen / AWS）。プレート境界: Bird (2003) PB2002。活断層: GEM Global Active Faults Database（Styron &amp; Pagani 2020、CC BY-SA 4.0）。断層面は、記録された傾きの向きと角度で地下へ伸ばした目安（深さの記録が無いものは 15 km まで）。沈み込むプレート: USGS Slab2（Hayes 2018）の上面の 20 km ごとの等深線。</p>
     </div>
   </section>
@@ -414,7 +415,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   </div>
 
   <div class="mapbtns">
-    <button class="mb" id="btnNorth" title="北を上に（真上から）" aria-label="北を上に">
+    <button class="mb" id="btnNorth" title="押すと北を上に（真上から）。左右になぞると回転、上下になぞると傾き" aria-label="北を上に。なぞると回転">
       <svg viewBox="0 0 24 24"><g id="needle"><path d="M12 3 L15.5 12 H8.5 Z" fill="#e5483b"/><path d="M12 21 L8.5 12 H15.5 Z" fill="#9aa4ae"/></g></svg>
     </button>
     <button class="mb" id="btnHere" title="現在地" aria-label="現在地">
@@ -1446,8 +1447,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       } else {
         grab(p.mx, p.my, i.mx, i.my);
         var c = W ? wGround(i.mx, i.my) : (ground(i.mx, i.my, h) || controls.target.clone());
-        if (p.d > 0 && i.d > 0) { if (W) wZoomAbout(c, p.d / i.d); else scaleAbout(c, p.d / i.d); }
-        if (!g.rot && Math.abs(twist) > 0.17) g.rot = true;
+        // ひねりは約 5° で回り始める（前は 10°。2026-10-25 利用者「スマホで2本指を使った回転が難しい」）。
+        // 回り始めたら、指のあいだが 12% 以上変わるまでは拡大・縮小しない（ひねるときの指の間隔のぶれで、回しながら寄ったり離れたりしないように）
+        if (!g.rot && Math.abs(twist) > 0.09) { g.rot = true; g.rotD = i.d; }
+        var zoomOK = !g.rot || g.zoomOn || Math.abs(Math.log(i.d / g.rotD)) > 0.12;
+        if (g.rot && zoomOK) g.zoomOn = true;
+        if (zoomOK && p.d > 0 && i.d > 0) { if (W) wZoomAbout(c, p.d / i.d); else scaleAbout(c, p.d / i.d); }
         if (g.rot) {
           var da = turn(i.ang - p.ang);
           if (W) wTwist(c, da);
@@ -1589,7 +1594,25 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   }
 
   // 地図ボタン
-  document.getElementById('btnNorth').addEventListener('click', function () {
+  // 方角のボタン: 押すと北が上・真上から。左右になぞると回転、上下になぞると傾き（指 1 本で回せるように。2026-10-25 利用者「スマホで2本指を使った回転が難しい」）
+  var btnNorth = document.getElementById('btnNorth'), nDrag = null;
+  btnNorth.addEventListener('pointerdown', function (e) {
+    nDrag = { x: e.clientX, y: e.clientY, moved: false }; anim = null;
+    try { btnNorth.setPointerCapture(e.pointerId); } catch (err) { /* 取れなくてもよい */ }
+  });
+  btnNorth.addEventListener('pointermove', function (e) {
+    if (!nDrag) return;
+    var dx = e.clientX - nDrag.x, dy = e.clientY - nDrag.y;
+    if (!nDrag.moved && Math.hypot(dx, dy) < 6) return;
+    nDrag.moved = true;
+    var k = 2 * Math.PI / Math.max(300, canvas.clientHeight) * 0.9;
+    orbitBy(dx * k, dy * k);
+    nDrag.x = e.clientX; nDrag.y = e.clientY;
+  });
+  btnNorth.addEventListener('pointerup', function () { if (nDrag && nDrag.moved) btnNorth.dataset.dragged = '1'; nDrag = null; });
+  btnNorth.addEventListener('pointercancel', function () { nDrag = null; });
+  btnNorth.addEventListener('click', function () {
+    if (btnNorth.dataset.dragged) { delete btnNorth.dataset.dragged; return; } // なぞったあとの「押した」は北に戻さない
     if (state.mode === 'japan') flyTo({ phi: 0.0001, theta: 0, ms: 700 }); else wFly({ head: 0, tilt: 0, ms: 700 });
   });
   function zoomBtn(f) {
