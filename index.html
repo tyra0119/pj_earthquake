@@ -429,7 +429,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   <div class="tip" id="tip" hidden></div>
   <div class="selrect" id="selRect" hidden></div>
-  <svg class="lasso" id="lassoSvg" hidden aria-hidden="true"><path id="lassoPath" d=""></path></svg>
+  <svg class="lasso" id="lassoSvg" style="display:none" aria-hidden="true"><path id="lassoPath" d=""></path></svg>
 
   <section class="strip" id="strip" hidden aria-label="環太平洋のつながり">
     <div class="shead">
@@ -1991,7 +1991,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     regionInfo.textContent = region ? 'いまの期間・大きさで、囲んだ範囲の中に ' + fmtNum(regionCount()) + ' 件' : '';
   }
   function setSelecting(on) {
-    selecting = on; selStart = null; selRect.hidden = true; lassoSvg.hidden = true; lassoPts = [];
+    selecting = on; selStart = null; selRect.hidden = true; lassoSvg.style.display = 'none'; lassoPts = []; // SVG には hidden が効かないので display で
     canvas.classList.toggle('selecting', !!on);
     regionBtn.textContent = on === 'rect' ? '囲むのをやめる' : '四角で囲む';
     regionLasso.textContent = on === 'lasso' ? '囲むのをやめる' : 'なぞって囲む';
@@ -2018,7 +2018,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   function drawLasso() {
     var r = canvas.getBoundingClientRect();
     lassoPath.setAttribute('d', lassoPts.map(function (p, i) { return (i ? 'L' : 'M') + (p[0] - r.left).toFixed(1) + ' ' + (p[1] - r.top).toFixed(1); }).join(' ') + (lassoPts.length > 2 ? ' Z' : ''));
-    lassoSvg.hidden = false;
+    lassoSvg.style.display = '';
   }
   function finishSelect(x0, y0, x1, y1) {
     var l = Math.min(x0, x1), r = Math.max(x0, x1), t = Math.min(y0, y1), b = Math.max(y0, y1);
